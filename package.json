@@ -1,15 +1,19 @@
 {
-  "name": "nodejs",
+  "name": "my-project",
   "version": "1.0.0",
-  "description": "",
+  "type": "module",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node index.js",
+    "test": "node test-local.js",
+    "dev": "node test-local.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "dependencies": {
-    "@types/node": "^22.13.11"
+    "@notionhq/client": "^4.0.1",
+    "express": "^5.1.0",
+    "fastest-levenshtein": "^1.0.16",
+    "google-auth-library": "^10.1.0",
+    "googleapis": "^152.0.0",
+    "dotenv": "^16.3.1"
   }
 }

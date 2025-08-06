@@ -1,0 +1,53 @@
+name: Moonstone Importer - Scheduled Run
+
+on:
+  schedule:
+    # Run twice daily: at 8:00 AM and 8:00 PM UTC
+    # Adjust timezone as needed by changing the hours
+    - cron: '0 8 * * *'   # 8:00 AM UTC
+    - cron: '0 20 * * *'  # 8:00 PM UTC
+  
+  # Allow manual triggering for testing
+  workflow_dispatch:
+
+jobs:
+  import-data:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Run Moonstone Importer
+      env:
+        NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+        GAPI_SERVICE_ACCOUNT_KEY: ${{ secrets.GAPI_SERVICE_ACCOUNT_KEY }}
+        GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
+        NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+      run: |
+        echo "🚀 Starting Moonstone Importer..."
+        echo "⏰ Current time: $(date)"
+        timeout 900 node index.js || {
+          echo "❌ Script timed out after 15 minutes"
+          exit 1
+        }
+        echo "✅ Import completed successfully"
+        
+    - name: Upload logs on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: import-logs-${{ github.run_number }}
+        path: |
+          *.log
+          /tmp/*.log
+        retention-days: 7
