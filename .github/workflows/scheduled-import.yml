@@ -5,7 +5,7 @@ on:
     # Run twice daily: at 8:00 AM and 8:00 PM UTC
     # Adjust timezone as needed by changing the hours
     - cron: '0 8 * * *'   # 8:00 AM UTC
-    - cron: '0 20 * * *'  # 8:00 PM UTC
+    - cron: '0 15 * * *'  # 3:00 PM UTC
   
   # Allow manual triggering for testing
   workflow_dispatch:
