@@ -190,20 +190,6 @@ function normName(s) {
     .trim();
 }
 
-async function ensureSingleDivider(parentId) {
-  const res = await notionWithRetry.blocks.children.list({ block_id: parentId });
-  const dividers = res.results.filter((b) => b.type === "divider");
-
-  // Do NOT insert any divider here. Only archive extras if they exist.
-  if (dividers.length <= 1) return;
-
-  // Keep the first, archive the rest
-  for (let i = 1; i < dividers.length; i++) {
-    await notionWithRetry.blocks.update({ block_id: dividers[i].id, archived: true });
-    await sleep(40);
-  }
-}
-
 async function dedupeToggles(parentId, titles) {
   if (!parentId || !Array.isArray(titles) || titles.length === 0) return;
 
@@ -419,6 +405,96 @@ function createTableBlock(pairs) {
   };
 }
 
+// ---- appendQuestionGroup(notion, parentId, row, title, indices) ----
+async function appendQuestionGroup(notion, parentId, row, title, indices) {
+  console.log(`➕ Appending section "${title}" with ${indices.length} questions to ${parentId}`);
+
+  // 1) Create the section toggle
+  const sectionRes = await notionWithRetry.blocks.children.append({
+    block_id: parentId,
+    children: [
+      {
+        object: "block",
+        type: "toggle",
+        toggle: { rich_text: [{ type: "text", text: { content: title } }] },
+      },
+    ],
+  });
+  const sectionId = sectionRes.results?.[0]?.id;
+  await sleep(80);
+
+  // 2) One toggle per question, then a quote with the answer
+  for (const i of indices) {
+    const qTitle =
+      (typeof allQuestions !== "undefined" && allQuestions[i]) || `Question ${i}`;
+
+    const qRes = await notionWithRetry.blocks.children.append({
+      block_id: sectionId,
+      children: [
+        {
+          object: "block",
+          type: "toggle",
+          toggle: { rich_text: [{ type: "text", text: { content: qTitle } }] },
+        },
+      ],
+    });
+    const qId = qRes.results?.[0]?.id;
+    await sleep(60);
+
+    const answer = (row?.[i]?.trim?.() || "No response");
+    await notionWithRetry.blocks.children.append({
+      block_id: qId,
+      children: [
+        {
+          object: "block",
+          type: "quote",
+          quote: { rich_text: [{ type: "text", text: { content: answer } }] },
+        },
+      ],
+    });
+    await sleep(60);
+  }
+}
+
+// ---- createQAgroup(row, indices) ----
+// Returns an array of Q/A toggle blocks, one per column index.
+// Used when we already have the parent toggle and want to append multiple Q/A items at once.
+function createQAgroup(row, indices) {
+  return (indices || []).map((i) => ({
+    object: "block",
+    type: "toggle",
+    toggle: {
+      rich_text: [
+        {
+          type: "text",
+          text: {
+            // If you have allQuestions[], use it; otherwise fall back to "Question <i>"
+            content:
+              (typeof allQuestions !== "undefined" && allQuestions[i]) ||
+              `Question ${i}`,
+          },
+        },
+      ],
+      children: [
+        {
+          object: "block",
+          type: "quote",
+          quote: {
+            rich_text: [
+              {
+                type: "text",
+                text: {
+                  content: (row?.[i]?.trim?.() || "No response"),
+                },
+              },
+            ],
+          },
+        },
+      ],
+    },
+  }));
+}
+
 // ===================== SECTION: Page Builders (Unmatched Referral Page) =====================
 // Create a page for an unmatched *searcher* referral
 async function createUnmatchedReferralPage(searcherName, timestamp, row) {
@@ -491,7 +567,7 @@ async function createUnmatchedReferralPage(searcherName, timestamp, row) {
   }
   const riToggleId = riToggle.id;
 
-  // --- Clear ANY old children under REFERRAL INSIGHT (tables/toggles) to avoid duplication
+  // --- Clear ANY old children under REFERRAL INSIGHT (do this once per run)
   {
     const riChildren = await notionWithRetry.blocks.children.list({ block_id: riToggleId });
     for (const b of riChildren.results) {
@@ -500,26 +576,24 @@ async function createUnmatchedReferralPage(searcherName, timestamp, row) {
     }
   }
 
-  // 1) Append the 2-column info table
-  {
-    const infoPairs = [
-      ["Searcher Name",     row?.[22] || ""],
-      ["Searcher Email",    row?.[23] || ""],
-      ["Searcher LinkedIn", row?.[24] || ""],
-      ["Referrer Name",     row?.[18] || ""],
-      ["Referrer Email",    row?.[19] || ""],
-      ["Referrer Phone",    row?.[20] || ""],
-      ["Referrer LinkedIn", row?.[21] || ""],
-      ["Form filled out:",  row?.[2]  || ""],
-    ];
-    await notionWithRetry.blocks.children.append({
-      block_id: riToggleId,
-      children: [createTableBlock(infoPairs)],
-    });
-    await sleep(80);
-  }
+  // --- Append the 2-column info table first
+  const infoPairs = [
+    ["Searcher Name",          row?.[22] || ""],
+    ["Searcher Email",         row?.[23] || ""],
+    ["Searcher LinkedIn",      row?.[24] || ""],
+    ["Referrer Name",          row?.[18] || ""],
+    ["Referrer Email",         row?.[19] || ""],
+    ["Referrer Phone",         row?.[20] || ""],
+    ["Referrer LinkedIn",      row?.[21] || ""],
+    ["Form filled out:",       row?.[2]  || ""],
+  ];
+  await notionWithRetry.blocks.children.append({
+    block_id: riToggleId,
+    children: [createTableBlock(infoPairs)],
+  });
+  await sleep(120);
 
-  // 2) Append the 4 Q&A sections
+  // --- Then append the four Q&A sections (same layout/titles as matched referrals)
   await appendQuestionGroup(notionWithRetry, riToggleId, row, "BASICS", [25, 26, 27, 28]);
   await sleep(80);
 
@@ -944,7 +1018,6 @@ async function processUnmatchedSearcherReferrals(searchers, searcherReferrals) {
           },
         }, // This curly brace closes the 'properties' object correctly
       });
-      await addStructureBlocks(parentPage.id, formType, row);
       // Then create toggle sections below like normal
     }
 
@@ -1773,6 +1846,107 @@ async function processUnmatchedSearcherReferrals(searchers, searcherReferrals) {
       }
   }
 
+    // --- BEGIN: Create/Update UNMATCHED STARTUP referral pages ---
+    for (const [startupKey, referralRows] of Object.entries(referralMap)) {
+      if (!referralRows || referralRows.length === 0) continue;
+
+      const pageTitle = `⚠️ Unmatched referral for startup: ${startupKey}`;
+      console.log(`🧾 Creating/Updating unmatched startup referral page for: ${startupKey}  (rows: ${referralRows.length})`);
+
+      // Upsert page
+      const existing = await notionWithRetry.databases.query({
+        database_id: process.env.NOTION_DATABASE_ID,
+        filter: { property: "Name", title: { equals: pageTitle } },
+      });
+
+      let page;
+      if (existing.results.length > 0) {
+        page = existing.results[0];
+        await notionWithRetry.pages.update({
+          page_id: page.id,
+          properties: {
+            "SF Referrals": { select: { name: "⚠️ Unmatched Referral" } },
+            "Last Updated": { date: { start: new Date().toISOString() } },
+          },
+        });
+        console.log(`🔁 Updated unmatched startup page: ${startupKey}`);
+      } else {
+        const firstTimestamp = referralRows[0]?.[2] || null;
+        page = await notionWithRetry.pages.create({
+          parent: { type: "database_id", database_id: process.env.NOTION_DATABASE_ID },
+          properties: {
+            Name: { title: [{ text: { content: pageTitle } }] },
+            "SF Referrals": { select: { name: "⚠️ Unmatched Referral" } },
+            ...(firstTimestamp && !Number.isNaN(Date.parse(firstTimestamp))
+              ? { "Form filled out:": { date: { start: new Date(firstTimestamp).toISOString() } } }
+              : {}),
+            "Last Updated": { date: { start: new Date().toISOString() } },
+          },
+        });
+        console.log(`🆕 Created unmatched startup page: ${startupKey}`);
+      }
+
+      // Ensure single REFERRAL INSIGHT toggle
+      await dedupeToggles(page.id, ["REFERRAL INSIGHT"]);
+      let ri = (await notionWithRetry.blocks.children.list({ block_id: page.id }))
+        .results.find((b) => b.type === "toggle" && b.toggle?.rich_text?.[0]?.text?.content === "REFERRAL INSIGHT");
+      if (!ri) {
+        const riRes = await notionWithRetry.blocks.children.append({
+          block_id: page.id,
+          children: [{ object: "block", type: "toggle", toggle: { rich_text: [{ type: "text", text: { content: "REFERRAL INSIGHT" } }] } }],
+        });
+        await sleep(60);
+        ri = riRes.results?.[0];
+      }
+      const riId = ri.id;
+
+      // Clear any old content under REFERRAL INSIGHT
+      const kids = await notionWithRetry.blocks.children.list({ block_id: riId });
+      for (const b of kids.results) {
+        await notionWithRetry.blocks.update({ block_id: b.id, archived: true });
+        await sleep(30);
+      }
+
+      // Add one toggle per referral row
+      const referralToggles = referralRows.map((refRow, idx) => ({
+        object: "block",
+        type: "toggle",
+        toggle: { rich_text: [{ type: "text", text: { content: `Referral ${idx + 1}` } }] },
+      }));
+      await notionWithRetry.blocks.children.append({ block_id: riId, children: referralToggles });
+      await sleep(80);
+
+      // For each referral toggle: append an info table (adjust columns if your founder-referral sheet differs)
+      const latest = await notionWithRetry.blocks.children.list({ block_id: riId });
+      for (let i = 0; i < referralRows.length; i++) {
+        const refRow = referralRows[i];
+        const title = `Referral ${i + 1}`;
+        const refBlock = latest.results.find(
+          (b) => b.type === "toggle" && b.toggle?.rich_text?.[0]?.text?.content === title
+        );
+        if (!refBlock) continue;
+
+        await appendChildrenSafe(refBlock.id, [
+          createTableBlock([
+            ["Startup",          refRow?.[9] || ""],  // founder referral’s startup (col 9)
+            ["Referrer Name",    refRow?.[4] || ""],
+            ["Referrer Email",   refRow?.[5] || ""],
+            ["Form filled out:", refRow?.[2] || ""],
+          ]),
+        ]);
+        await sleep(80);
+
+        // If you have founder-referral Q&A columns, you can add appendQuestionGroup(...) here similarly.
+      }
+
+      console.log(`✅ Unmatched startup page complete: ${startupKey}`);
+    }
+    // --- END: Unmatched STARTUP referral pages ---
+    console.log("🎉 All founder pages created successfully.");
+
+    await processUnmatchedSearcherReferrals(searchers, searcherReferrals);
+    await handleSearcherPages(searchers, searcherReferrals, notionWithRetry);
+
 // 🔧 Helper to group Q&A quote blocks by question columns
 // ---- createQAgroup(row, indices) ----
 function createQAgroup(row, columnIndices) {
@@ -1823,57 +1997,6 @@ function getToggle(title, children) {
     },
   };
 }
-
-// ---- appendQuestionGroup(notion, parentId, row, title, indices) ----
-    async function appendQuestionGroup(notion, parentId, row, title, indices) {
-      console.log(`➕ Appending section "${title}" with ${indices.length} questions to ${parentId}`);
-
-      // 1) Create the section toggle
-      const sectionRes = await notionWithRetry.blocks.children.append({
-        block_id: parentId,
-        children: [
-          {
-            object: "block",
-            type: "toggle",
-            toggle: { rich_text: [{ type: "text", text: { content: title } }] },
-          },
-        ],
-      });
-      const sectionId = sectionRes.results?.[0]?.id;
-      await sleep(100);
-
-      // 2) One toggle per question, then a quote with the answer
-      for (const i of indices) {
-        const qTitle =
-          (typeof allQuestions !== "undefined" && allQuestions[i]) || `Question ${i}`;
-
-        const qRes = await notionWithRetry.blocks.children.append({
-          block_id: sectionId,
-          children: [
-            {
-              object: "block",
-              type: "toggle",
-              toggle: { rich_text: [{ type: "text", text: { content: qTitle } }] },
-            },
-          ],
-        });
-        const qId = qRes.results?.[0]?.id;
-        await sleep(80);
-
-        const answer = (row?.[i]?.trim?.() || "No response");
-        await notionWithRetry.blocks.children.append({
-          block_id: qId,
-          children: [
-            {
-              object: "block",
-              type: "quote",
-              quote: { rich_text: [{ type: "text", text: { content: answer } }] },
-            },
-          ],
-        });
-        await sleep(80);
-      }
-    }
 
 // ✅ Creates an empty table block (step 1 of 2)
 // ---- createEmptyTableBlock() ----
@@ -1937,13 +2060,8 @@ async function addSearcherBlocks(pageId, row, searcherReferrals) {
     });
     formToggleId = created.results?.[0]?.id;
   }
-  
-  // Finally add divider + Team toggle
-  // append the divider alone
-  await appendChildrenSafe(formToggleId, [
-    { object: "block", type: "divider", divider: {} },
-  ]);
 
+  if (Array.isArray(searcherReferrals) && searcherReferrals.length > 0) {
   // Step 2.1 — Add the toggle block "REFERRAL INSIGHT"
   const referralInsightToggleRes = await notionWithRetry.blocks.children.append({
     block_id: formToggleId,
@@ -1989,35 +2107,33 @@ async function addSearcherBlocks(pageId, row, searcherReferrals) {
     ],
   });
   const tableBlockId = tableBlockRes.results[0].id;
+  }
 
-  // Append each question group as its own section (flat appends)
-  await appendQuestionGroup(notionWithRetry, riToggle.id, row, "BASICS", [25, 26, 27, 28]);
-  await sleep(80);
-
+  // Append the Searcher FORM Q&A (correct indices)
   await appendQuestionGroup(
-    notionWithRetry, riToggle.id, row,
-    "THE SEARCHER’S MIND: PROBLEM SOLVING, PRIORITIZATION & PRESSURE",
-    [29, 30]
-  );
-  await sleep(80);
-
-  await appendQuestionGroup(
-    notionWithRetry, riToggle.id, row,
-    "AGI-PROOFING THE FUTURE: AI LEVERAGE IN ACTION",
-    [31, 32, 33]
-  );
-  await sleep(80);
-
-  await appendQuestionGroup(
-    notionWithRetry, riToggle.id, row,
-    "THE MOONSTONE DNA: TRUST, CONFLICT, AND STRATEGIC LEADERSHIP",
-    [34, 35, 36]
+    notionWithRetry, formToggleId, row,
+    "BASICS",
+    [44, 45, 46, 47]
   );
 
-  await notionWithRetry.blocks.children.append({
-    block_id: formToggleId,
-    children: qaSections,
-  });
+  await appendQuestionGroup(
+    notionWithRetry, formToggleId, row,
+    "YOUR MIND: PROBLEM SOLVING, PRIORITIZATION & PRESSURE",
+    [48, 49, 50, 51]
+  );
+
+  await appendQuestionGroup(
+    notionWithRetry, formToggleId, row,
+    "AI LEVERAGE IN ACTION: PREPARING FOR THE AGI ECONOMY",
+    [52, 53, 54, 55, 56]
+  );
+
+  await appendQuestionGroup(
+    notionWithRetry, formToggleId, row,
+    "THE MOONSTONE DNA: TRUST, CONFLICT, STRATEGIC LEADERSHIP, NETWORK",
+    [57, 58, 59, 60, 61, 62, 63, 64]
+  );
+
   await sleep(120);
 
   // then call a small helper that builds Team Inputs in two phases (from Patch #1)
@@ -2084,42 +2200,82 @@ async function addSearcherBlocks(pageId, row, searcherReferrals) {
           },
         ],
       });
-
-      // After creating the skeleton, ensure we have exactly one divider
-      await ensureSingleDivider(pageId);
+    }
     }
 
-  // Optionally handle inner blocks for "Searcher" and "Searcher Referral"
-  if (formType === "Searcher") {
-    const formToggleId = created.results[0].id;
+// ---- addStructureBlocks(pageId) ----
+// Creates the top-level structure ("Form" toggle, one divider, "Team Inputs" toggle)
+// idempotently. It only adds what's missing, then dedupes and ensures exactly one divider.
+async function addStructureBlocks(pageId) {
+  const kids = await notionWithRetry.blocks.children.list({ block_id: pageId });
+  const results = kids.results || [];
 
-    await appendQuestionGroup(notion, formToggleId, row, "BASICS", [44, 45, 46, 47]);
-    await appendQuestionGroup(
-      notion,
-      formToggleId,
-      row,
-      "YOUR MIND: PROBLEM SOLVING, PRIORITIZATION & PRESSURE",
-      [48, 49, 50, 51]
-    );
-    await appendQuestionGroup(
-      notion,
-      formToggleId,
-      row,
-      "AI LEVERAGE IN ACTION: PREPARING FOR THE AGI ECONOMY",
-      [52, 53, 54, 55, 56]
-    );
-    await appendQuestionGroup(
-      notion,
-      formToggleId,
-      row,
-      "THE MOONSTONE DNA: TRUST, CONFLICT, STRATEGIC LEADERSHIP, NETWORK",
-      [57, 58, 59, 60, 61, 62, 63, 64]
-    );
+  const hasForm = results.some(
+    b => b.type === "toggle" && b.toggle?.rich_text?.[0]?.text?.content === "Form"
+  );
+  const hasTeam = results.some(
+    b => b.type === "toggle" && b.toggle?.rich_text?.[0]?.text?.content === "Team Inputs"
+  );
+  const hasDivider = results.some(b => b.type === "divider");
+
+  const children = [];
+
+  if (!hasForm) {
+    children.push({
+      object: "block",
+      type: "toggle",
+      toggle: {
+        rich_text: [{ type: "text", text: { content: "Form" } }],
+        children: [
+          {
+            object: "block",
+            type: "paragraph",
+            paragraph: {
+              rich_text: [
+                { type: "text", text: { content: "Responses from the founder form are grouped here." } },
+              ],
+            },
+          },
+        ],
+      },
+    });
   }
-    console.log("🎉 All founder pages created successfully.");
 
-    await processUnmatchedSearcherReferrals(searchers, searcherReferrals);
-    await handleSearcherPages(searchers, searcherReferrals, notionWithRetry);
+  if (!hasDivider) {
+    children.push({ object: "block", type: "divider", divider: {} });
+  }
+
+  if (!hasTeam) {
+    children.push({
+      object: "block",
+      type: "toggle",
+      toggle: {
+        rich_text: [{ type: "text", text: { content: "Team Inputs" } }],
+        children: [
+          {
+            object: "block",
+            type: "paragraph",
+            paragraph: {
+              rich_text: [
+                { type: "text", text: { content: "Responses from the Moonstone team are grouped here." } },
+              ],
+            },
+          },
+        ],
+      },
+    });
+  }
+
+  if (children.length) {
+    await notionWithRetry.blocks.children.append({
+      block_id: pageId,
+      children,
+    });
+    await sleep(80);
+  }
+
+  // keep exactly one divider and one of each toggle
+  await dedupeToggles(pageId, ["Form", "Team Inputs", "Team"]);
 }
 
   
@@ -2257,7 +2413,7 @@ async function handleSearcherPages(searchers, searcherReferrals, notion) {
     }
 
     // 2) Ensure base structure exists (adds "Form" + "Team Inputs")
-    await addStructureBlocks(parentPage.id, formType, row);
+    await addStructureBlocks(parentPage.id);
 
     // 3) Locate the "Form" toggle we just created
     const pageBlocks = await notionWithRetry.blocks.children.list({
@@ -2269,6 +2425,36 @@ async function handleSearcherPages(searchers, searcherReferrals, notion) {
         b.toggle?.rich_text?.[0]?.text?.content === "Form",
     );
     const formToggleId = formToggle?.id;
+
+    // NEW: always append the Searcher FORM Q&A under "Form" (even if there are no referrals)
+    if (formToggleId) {
+      // 44–45 BASICS
+      await appendQuestionGroup(
+        notionWithRetry, formToggleId, row,
+        "BASICS", [44, 45]
+      );
+
+      // 46–49 YOUR MIND
+      await appendQuestionGroup(
+        notionWithRetry, formToggleId, row,
+        "YOUR MIND: PROBLEM SOLVING, PRIORITIZATION & PRESSURE",
+        [46, 47, 48, 49]
+      );
+
+      // 50–54 AI LEVERAGE
+      await appendQuestionGroup(
+        notionWithRetry, formToggleId, row,
+        "AI LEVERAGE IN ACTION: PREPARING FOR THE AGI ECONOMY",
+        [50, 51, 52, 53, 54]
+      );
+
+      // 55–62 MOONSTONE DNA
+      await appendQuestionGroup(
+        notionWithRetry, formToggleId, row,
+        "THE MOONSTONE DNA: TRUST, CONFLICT, STRATEGIC LEADERSHIP, NETWORK",
+        [55, 56, 57, 58, 59, 60, 61, 62]
+      );
+    }
 
     // 4) Append REFERRAL INSIGHT safely (no deep-nesting in one payload)
     if (formToggleId && matchedReferrals.length > 0) {
