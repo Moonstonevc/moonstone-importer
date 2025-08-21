@@ -1,12 +1,99 @@
+// ===================== SECTION: Imports =====================
 import { Client } from "@notionhq/client";
 import { google } from "googleapis";
 import { auth } from "google-auth-library";
 import { distance } from "fastest-levenshtein";
 
+// ===================== SECTION: Question Text Repository (allQuestions) =====================
+const allQuestions = [
+  // 0–17
+  "",
+  "",
+  "",
+  "",
+  "",
+  "",
+  "",
+  "",
+  "",
+  "",
+  "",
+  "",
+  "",
+  "",
+  "",
+  "",
+  "",
+  "",
+
+  // 18–24 → Referral Info
+  "Referred Searcher Name",
+  "Referrer's Name",
+  "Referrer's Email",
+  "Referrer's LinkedIn",
+  "Entrepeneur's contact information",
+  "Entrepeneur's Email",
+  "Entrepeneur's LinkedIn",
+
+  // 25–28 → Referrer Info & Preferences
+  "How do you know @Entrepreneur’s contact info? What is your relationship?",
+  "Is @Entrepreneur’s contact info a previous founder/entrepreneur?",
+  "If yes, of what?",
+  "In case we contact @Entrepreneur’s contact info, do you prefer to stay anonymous?",
+
+  // 29–33 → Problem Solving + AI (Referral)
+  "Was there a moment when @Entrepreneur’s contact info was responsible for solving a problem no one else could tackle? What did they do first, and how did they structure their approach?",
+  "Tell me about a time when @Entrepreneur’s contact info had to make a decision under intense time pressure and without full information. What was the impact of that decision, and how did they justify it at the time?",
+  "Can you describe a project where @Entrepreneur’s contact info used an AI tool to produce a first draft, prototype, or concept much faster than expected? Which tool did they use, and what difference did it make?",
+  "Was there a time when @Entrepreneur’s contact info introduced you to a new AI tool? What was the tool, and what problem was it trying to solve?",
+  "Think of the most clever use of AI you’ve seen from @Entrepreneur’s contact info. What was the context, what did they build or automate, and why was it impressive?",
+
+  // 34–36 → Moonstone DNA (Referral)
+  "Tell me about a time when @Entrepreneur’s contact info had to challenge a teammate, partner, or client on a sensitive issue. How did they approach the conversation, and what was the outcome?",
+  "Was there ever a high-stakes meeting or moment where @Entrepreneur’s contact info had to assert a new direction or call for a change in plans? How did they carry the room, and how did others respond?",
+  "Can you share an instance where @Entrepreneur’s contact info helped stakeholders or team members realign after a conflict? What actions did they take to rebuild trust?",
+
+  // 37–43 → Searcher Inputs (title + properties)
+  "Searcher Name", // 37
+  "Searcher Email", // 38
+  "Searcher Phone", // 39
+  "Searcher LinkedIn", // 40
+  "Searcher Nickname", // 41
+  "Searcher Location", // 42
+  "Searcher CV", // 43
+  // 44–45 → Searcher BASICS
+  "Are you a previous founder/entrepreneur?",
+  "If yes,  tell us more.",
+  // 46–47: NEW training & availability
+  "To be able to well understand and support our searchers we intend all searchers to go through a six month training program. From when could you start dedicating ~3 hours per day to this program?",
+  "Our cohorts of 5 choose a daily touchpoint time together. What time windows work best for you? (Morning, Early afternoon, Late afternoon, Evening, Late evening, I’m flexible / decide with the group)",
+  // 48–51 → Searcher Problem Solving
+  "Think of a time when you had two or more urgent deadlines collide. What was at stake, how did you decide what to handle first, and how did you communicate that decision to others?",
+  "Describe a situation where a project led by you started going off-track. How did you step in, and what actions did you take to regain control?",
+  "Was there a moment when you were responsible for solving a problem that no one else seemed to know how to tackle? What did you do first, and how did you structure your approach?",
+  "Tell us about a time when you had to make a decision under intense time pressure and without full information. What was the impact of that decision, and how did you justify it at the time?",
+  // 52–56 → Searcher AI Leverage
+  "What added value do you believe AI tools bring to a business?",
+  "Can you describe a specific project where you used an AI tool to produce a first draft, prototype, or concept much faster than expected? Which tool did you use, and what difference did it make?",
+  "What AI tool are you currently passionate about? What is it, and what problem is it trying to solve?",
+  "Think of your most “clever” use of AI to date. What was the context, what did you build or automate, and why was it impressive?",
+  "We're looking for your high-level strategic thinking. Beyond just using tools, what are the first three actionable steps you would take to fundamentally transform a company and make it resilient in the face of future AGI advancements? Describe the actions and the rationale behind your choices.",
+  // 57–64 → Searcher Moonstone DNA
+  "Tell me about a time when you had to challenge a teammate, partner, or client on a sensitive issue. Walk me through your approach, and what was the outcome?",
+  "Describe a situation where team morale was low or trust was strained—and you played a role in shifting the dynamic. What exactly did you do?",
+  "Was there ever a high-stakes meeting or moment where you had to assert a new direction or call for a change in plans? How did you make that decision, how did you communicate it to the room, and how did others respond?",
+  "Can you share an instance where you helped stakeholders or team members realign after a conflict? What actions did you take to rebuild trust?",
+  "How many people could you go to dinner with in the next week who’d gladly lend you their social capital (out of 10)? These are the kind of people who say “Tell me who I should intro you to,” no pitch needed.",
+  "If you had to raise €150,000 in 90 days today, who would you turn to first and how would you present your proposal?",
+  "The relationships with outgoing entrepreneurs are a cornerstone of our program. Describe a specific experience where you had to earn the trust of a senior business owner. Walk us through your approach, what challenges you faced, and what actions you took to build a lasting, trusting relationship.",
+  "We are looking for visionary leaders who can inspire confidence in an unproven idea. Tell us about a time you secured buy-in for a big, bold project. Describe the project, the audience you were trying to convince, and the core arguments or story you used to get them on board.",
+];
+
 const normalizeName = (name) =>
   name
     .toLowerCase()
     .replace(/[^a-z0-9]/gi, "")
+// ===================== SECTION: Environment & Client Initialization (Notion + Google Sheets) =====================
     .trim();
 
 console.log("\ud83c\udf0d Environment variables check:", {
@@ -26,12 +113,142 @@ try {
 }
 
 const notion = new Client({ auth: process.env.NOTION_API_KEY });
+
 const google_client = auth.fromJSON(json_data);
 google_client.scopes = [
   "https://www.googleapis.com/auth/spreadsheets.readonly",
 ];
 const sheets = google.sheets({ version: "v4", auth: google_client });
 
+// --- Notion retry helpers (inserted after client init) ---
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+const withRetry = async (fn, { tries = 7, baseDelay = 600 } = {}) => {
+  let lastErr;
+  for (let i = 0; i < tries; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+
+      const code = err?.code || err?.status || err?.name || err?.cause?.code;
+      const msg  = (err?.message || "").toLowerCase();
+
+      const transient =
+        code === "rate_limited" ||
+        code === 429 ||
+        code === 503 ||
+        code === "ECONNRESET" ||
+        code === "ENOTFOUND" ||
+        code === "UND_ERR_CONNECT_TIMEOUT" ||
+        code === "UND_ERR_HEADERS_TIMEOUT" ||
+        code === "UND_ERR_SOCKET" ||
+        msg.includes("fetch failed") ||
+        msg.includes("terminated");
+
+      if (transient) {
+        await sleep(baseDelay * Math.pow(2, i)); // exponential backoff
+        continue;
+      }
+      // not transient → bubble up
+      throw err;
+    }
+  }
+  throw lastErr;
+};
+
+const notionWithRetry = {
+  blocks: {
+    children: {
+      append: (args) => withRetry(() => notion.blocks.children.append(args)),
+      list:   (args) => withRetry(() => notion.blocks.children.list(args)),
+    },
+    update: (args) => withRetry(() => notion.blocks.update(args)),
+  },
+  pages: {
+    create: (args) => withRetry(() => notion.pages.create(args)),
+    update: (args) => withRetry(() => notion.pages.update(args)),
+  },
+  databases: {
+    query: (args) => withRetry(() => notion.databases.query(args)),
+  },
+};
+
+async function appendChildrenSafe(block_id, children) {
+  const clean = (children || []).filter(Boolean);
+  if (clean.length === 0) return { results: [] }; // nothing to append
+  return await notionWithRetry.blocks.children.append({ block_id, children: clean });
+}
+
+// --- end retry helpers ---
+function normName(s) {
+  return (s || "")
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/[^a-z0-9]+/gi, " ")
+    .trim();
+}
+
+async function ensureSingleDivider(parentId) {
+  const res = await notionWithRetry.blocks.children.list({ block_id: parentId });
+  const dividers = res.results.filter((b) => b.type === "divider");
+
+  // Do NOT insert any divider here. Only archive extras if they exist.
+  if (dividers.length <= 1) return;
+
+  // Keep the first, archive the rest
+  for (let i = 1; i < dividers.length; i++) {
+    await notionWithRetry.blocks.update({ block_id: dividers[i].id, archived: true });
+    await sleep(40);
+  }
+}
+
+async function dedupeToggles(parentId, titles) {
+  if (!parentId || !Array.isArray(titles) || titles.length === 0) return;
+
+  const kids = await notionWithRetry.blocks.children.list({ block_id: parentId });
+  for (const title of titles) {
+    const toggles = kids.results.filter(
+      (b) => b.type === "toggle" && b.toggle?.rich_text?.[0]?.text?.content === title
+    );
+    // keep the first, archive the rest
+    for (let i = 1; i < toggles.length; i++) {
+      await notionWithRetry.blocks.update({ block_id: toggles[i].id, archived: true });
+      await sleep(60);
+    }
+  }
+}
+
+function debugSearcherReferralJoin(rows, searchers, searcherReferrals) {
+  const norm = (s) => (s || "").trim().toLowerCase();
+
+  // Build a set of Searcher names from Searcher forms (col 37)
+  const searcherNames = new Set(searchers.map((s) => norm(s[37])));
+
+  // Check each referral: does its Searcher Name (col 22) exist among Searchers (col 37)?
+  const missing = [];
+  for (const r of searcherReferrals) {
+    const referred22 = norm(r[22]); // Searcher name provided by the referrer
+    if (!searcherNames.has(referred22)) {
+      missing.push({ rowIndex: rows.indexOf(r), referredRaw: r[22] });
+    }
+  }
+
+  console.log("🔎 Searchers (col 37):", searcherNames.size);
+  console.log("🔎 Searcher referrals:", searcherReferrals.length);
+
+  if (missing.length) {
+    console.warn("⚠️ Referrals whose Searcher Name (col 22) does not match any Searcher (col 37):");
+    for (const m of missing.slice(0, 50)) {
+      console.warn(`  - referral row#${m.rowIndex}: [22] = "${m.referredRaw}"`);
+    }
+  } else {
+    console.log("✅ Every referral name in col 22 has a matching Searcher name in col 37.");
+  }
+}
+
+// ===================== SECTION: Block Builder Helpers (createQuoteToggle, hasBlockChanged, etc.) =====================
 const createQuoteToggle = (title, content) => ({
   object: "block",
   type: "toggle",
@@ -72,34 +289,37 @@ const createTextTableRow = (label, value) => ({
 const updateToggleQuote = async (parentBlockId, title, newText) => {
   if (!newText?.trim()) return;
 
-  const existingChildren = await notion.blocks.children.list({
+  const existingChildren = await notionWithRetry.blocks.children.list({
     block_id: parentBlockId,
   });
+
   const toggle = existingChildren.results.find(
     (b) =>
       b.type === "toggle" && b.toggle?.rich_text?.[0]?.text?.content === title,
   );
 
   if (toggle) {
-    const toggleChildren = await notion.blocks.children.list({
+    const toggleChildren = await notionWithRetry.blocks.children.list({
       block_id: toggle.id,
     });
     const quoteBlock = toggleChildren.results.find((b) => b.type === "quote");
     if (hasBlockChanged(quoteBlock, newText)) {
-      await notion.blocks.update({
+      await notionWithRetry.blocks.update({
         block_id: quoteBlock.id,
         quote: {
           rich_text: [{ type: "text", text: { content: newText } }],
         },
       });
+      await sleep(100);
     }
   } else {
     // Add new toggle if it didn't exist
     const block = createQuoteToggle(title, newText);
-    await notion.blocks.children.append({
+    await notionWithRetry.blocks.children.append({
       block_id: parentBlockId,
       children: [block],
     });
+    await sleep(120);
   }
 };
 
@@ -107,9 +327,11 @@ const updateToggleQuote = async (parentBlockId, title, newText) => {
 const updateMultipleQuotes = async (parentBlockId, titles, answers) => {
   for (let i = 0; i < titles.length; i++) {
     await updateToggleQuote(parentBlockId, titles[i], answers[i]);
+    await sleep(120);
   }
 };
 
+// ===================== SECTION: Enumerations / Valid Select Options =====================
 const validLocations = [
   "Northern Europe",
   "Western Europe",
@@ -146,19 +368,231 @@ const validFundingStages = [
   "> Series D",
 ];
 
-export async function main() {
-  console.log("\ud83d\ude80 Script started");
-  const response = await sheets.spreadsheets.values.get({
-    spreadsheetId: process.env.GOOGLE_SHEET_ID,
-    range: "A2:ABY",
+// Map the sheet answer (col 47) to your Notion Select options
+function mapAvailabilityOption(raw) {
+  if (!raw) return undefined;
+  const s = String(raw).toLowerCase();
+
+  const options = [
+    "Morning (09:00–12:00)",
+    "Early afternoon (12:00–15:00)",
+    "Late afternoon (15:00–18:00)",
+    "Evening (18:00–21:00)",
+    "Late evening (21:00–23:00)",
+    "I’m flexible / decide with the group",
+  ];
+
+  // return the first defined option that appears in the answer
+  for (const opt of options) {
+    const probe = opt.toLowerCase().split(" (")[0]; // match by label part
+    if (s.includes(probe.split(" ")[0]) || s.includes(probe)) return opt;
+  }
+  if (s.includes("flex")) return "I’m flexible / decide with the group";
+  return undefined;
+}
+
+// === Table helpers (used by unmatched-searcher page and elsewhere) ===
+
+function generateTableRows(pairs) {
+  return (pairs || []).map(([label, value]) => ({
+    object: "block",
+    type: "table_row",
+    table_row: {
+      cells: [
+        [{ type: "text", text: { content: String(label ?? "") } }],
+        [{ type: "text", text: { content: String(value ?? "") } }],
+      ],
+    },
+  }));
+}
+
+function createTableBlock(pairs) {
+  return {
+    object: "block",
+    type: "table",
+    table: {
+      table_width: 2,
+      has_column_header: true,
+      has_row_header: false,
+      children: generateTableRows(pairs),
+    },
+  };
+}
+
+// ===================== SECTION: Page Builders (Unmatched Referral Page) =====================
+// Create a page for an unmatched *searcher* referral
+async function createUnmatchedReferralPage(searcherName, timestamp, row) {
+  const title = `⚠️ Unmatched referral for searcher: ${searcherName || "Unknown"}`;
+  console.log("🧩 Upserting unmatched searcher referral page:", title);
+
+  // Upsert by Name
+  const existing = await notionWithRetry.databases.query({
+    database_id: process.env.NOTION_DATABASE_ID,
+    filter: { property: "Name", title: { equals: title } },
   });
+
+  const baseProps = {
+    "Form Type":    { select: { name: "Searcher Referral" } },
+    "SF Referrals": { select: { name: "⚠️ Unmatched Referral" } },
+    "Form filled out:":
+      timestamp && !Number.isNaN(Date.parse(timestamp))
+        ? { date: { start: new Date(timestamp).toISOString() } }
+        : undefined,
+    "Last Updated": { date: { start: new Date().toISOString() } },
+  };
+
+  let page;
+  if (existing.results.length > 0) {
+    page = existing.results[0];
+    await notionWithRetry.pages.update({ page_id: page.id, properties: baseProps });
+  } else {
+    page = await notionWithRetry.pages.create({
+      parent: { type: "database_id", database_id: process.env.NOTION_DATABASE_ID },
+      properties: { Name: { title: [{ text: { content: title } }] }, ...baseProps },
+    });
+  }
+  const pageId = page.id;
+
+  // --- Ensure a single "Form" toggle at the page root
+  await dedupeToggles(pageId, ["Form"]);
+  let formToggle = (await notionWithRetry.blocks.children.list({ block_id: pageId }))
+    .results.find((b) => b.type === "toggle" && b.toggle?.rich_text?.[0]?.text?.content === "Form");
+  if (!formToggle) {
+    const formRes = await notionWithRetry.blocks.children.append({
+      block_id: pageId,
+      children: [
+        { object: "block", type: "toggle",
+          toggle: { rich_text: [{ type: "text", text: { content: "Form" } }] } }
+      ],
+    });
+    await sleep(80);
+    formToggle = formRes.results?.[0];
+  }
+
+  // --- Ensure a single "REFERRAL INSIGHT" under "Form"
+  // --- Ensure a single "REFERRAL INSIGHT" under "Form"
+  await dedupeToggles(formToggle.id, ["REFERRAL INSIGHT"]);
+  let riToggle = (await notionWithRetry.blocks.children.list({ block_id: formToggle.id }))
+    .results.find((b) => b.type === "toggle" && b.toggle?.rich_text?.[0]?.text?.content === "REFERRAL INSIGHT");
+
+  if (!riToggle) {
+    const riRes = await notionWithRetry.blocks.children.append({
+      block_id: formToggle.id,
+      children: [
+        {
+          object: "block",
+          type: "toggle",
+          toggle: { rich_text: [{ type: "text", text: { content: "REFERRAL INSIGHT" } }] },
+        },
+      ],
+    });
+    await sleep(100);
+    riToggle = riRes.results?.[0];
+  }
+  const riToggleId = riToggle.id;
+
+  // --- Clear ANY old children under REFERRAL INSIGHT (tables/toggles) to avoid duplication
+  {
+    const riChildren = await notionWithRetry.blocks.children.list({ block_id: riToggleId });
+    for (const b of riChildren.results) {
+      await notionWithRetry.blocks.update({ block_id: b.id, archived: true });
+      await sleep(40);
+    }
+  }
+
+  // 1) Append the 2-column info table
+  {
+    const infoPairs = [
+      ["Searcher Name",     row?.[22] || ""],
+      ["Searcher Email",    row?.[23] || ""],
+      ["Searcher LinkedIn", row?.[24] || ""],
+      ["Referrer Name",     row?.[18] || ""],
+      ["Referrer Email",    row?.[19] || ""],
+      ["Referrer Phone",    row?.[20] || ""],
+      ["Referrer LinkedIn", row?.[21] || ""],
+      ["Form filled out:",  row?.[2]  || ""],
+    ];
+    await notionWithRetry.blocks.children.append({
+      block_id: riToggleId,
+      children: [createTableBlock(infoPairs)],
+    });
+    await sleep(80);
+  }
+
+  // 2) Append the 4 Q&A sections
+  await appendQuestionGroup(notionWithRetry, riToggleId, row, "BASICS", [25, 26, 27, 28]);
+  await sleep(80);
+
+  await appendQuestionGroup(
+    notionWithRetry, riToggleId, row,
+    "THE SEARCHER’S MIND: PROBLEM SOLVING, PRIORITIZATION & PRESSURE",
+    [29, 30]
+  );
+  await sleep(80);
+
+  await appendQuestionGroup(
+    notionWithRetry, riToggleId, row,
+    "AGI-PROOFING THE FUTURE: AI LEVERAGE IN ACTION",
+    [31, 32, 33]
+  );
+  await sleep(80);
+
+  await appendQuestionGroup(
+    notionWithRetry, riToggleId, row,
+    "THE MOONSTONE DNA: TRUST, CONFLICT, AND STRATEGIC LEADERSHIP",
+    [34, 35, 36]
+  );
+
+  console.log(`✅ Unmatched referral page updated for searcher: ${searcherName}`);
+}
+
+async function processUnmatchedSearcherReferrals(searchers, searcherReferrals) {
+  // Build set of normalized names from Searcher forms (col 37)
+  const searcherNameSet = new Set(
+    (searchers || []).map(s => normName(s[37])).filter(Boolean)
+  );
+
+  // Keep only searcher-referral rows whose Searcher Name (col 22) has no match in Searchers (col 37)
+  const unmatched = (searcherReferrals || []).filter(r => {
+    const referred = normName(r[22]); // searcher name as stated by the referrer
+    return referred && !searcherNameSet.has(referred);
+  });
+
+  console.log("👤 Searchers by name:", Array.from(searcherNameSet));
+  console.log("🧩 Unmatched searcher referrals:", unmatched.length);
+  unmatched.forEach(r => {
+    console.log(`  - [22]=${(r[22]||"").trim()}  [2]=${r[2]||""}`);
+  });
+
+  // Upsert a Notion page for each truly unmatched searcher referral
+  for (const r of unmatched) {
+    const timestamp = r?.[2] ?? null;
+    const searcherName = String(r?.[22] || "Unknown").trim();
+    console.log(`🧾 Creating unmatched searcher referral page for: ${searcherName}`);
+    await createUnmatchedReferralPage(searcherName, timestamp, r);
+    await sleep(80);
+  }
+}
+
+// ===================== SECTION: Main Orchestrator =====================
+  async function main() {
+  console.log("\ud83d\ude80 Script started");
+  const response = await withRetry(
+    () =>
+      sheets.spreadsheets.values.get({
+        spreadsheetId: process.env.GOOGLE_SHEET_ID,
+        range: "A2:ABY",
+      }),
+    { tries: 5, baseDelay: 500 }
+  );
   const rows = response.data.values;
+  const referralMap = {};
   // Fetch all existing pages from Notion
   const existingPages = [];
   let cursor = undefined;
 
   do {
-    const resp = await notion.databases.query({
+    const resp = await notionWithRetry.databases.query({
       database_id: process.env.NOTION_DATABASE_ID,
       start_cursor: cursor,
     });
@@ -168,15 +602,39 @@ export async function main() {
   console.log("\ud83d\udcc4 Sheet data loaded. Rows:", rows.length);
 
   const founders = [],
-    referrals = [];
+    referrals = [],
+    searchers = [],
+    searcherReferrals = [];
+
   for (const row of rows) {
     const signal = row[3]?.trim().toLowerCase() || "";
-    if (signal.includes("i am a founder")) founders.push(row);
-    else if (signal.includes("i know an incredible founder"))
+
+    // Map the long Tally prompt to a simple form type
+    const simpleType =
+      signal === "i am a founder and i want to take my startup to the moon."
+        ? "founder"
+        : signal === "i know an incredible founder, someone moonstone should get to know."
+        ? "founder referral"
+        : signal === "i am an entrepreneur and i want to be a searcher for moonstone's search fund."
+        ? "searcher"
+        : signal === "i know an incredible entrepreneur, that would be a great searcher for moonstone's search fund."
+        ? "searcher referral"
+        : "";
+
+    if (simpleType === "founder") {
+      founders.push(row);
+    } else if (simpleType === "founder referral") {
       referrals.push(row);
+    } else if (simpleType === "searcher") {
+      searchers.push(row);
+    } else if (simpleType === "searcher referral") {
+      searcherReferrals.push(row);
+    }
   }
 
-  const referralMap = {};
+  // DEBUG: verify Searcher (col 37) ↔ Referral (col 22) joins
+  debugSearcherReferralJoin(rows, searchers, searcherReferrals);
+
   for (const row of referrals) {
     const name = row[9]?.trim().toLowerCase();
     if (name) {
@@ -186,13 +644,9 @@ export async function main() {
   }
 
   // ❗️REMOVE referrals for startups that exist in founder rows
-  const matchedStartupNamesRaw = founders
-    .map((row) => row[22]?.trim())
+    const matchedStartupNamesRaw = founders
+    .map((row) => row[72]?.trim())
     .filter(Boolean);
-
-  const matchedStartupNamesSet = new Set(
-    matchedStartupNamesRaw.map((name) => normalizeName(name)),
-  );
 
   const getBestMatch = (targetName, candidates) => {
     const normalizedTarget = normalizeName(targetName);
@@ -211,203 +665,96 @@ export async function main() {
     return bestScore <= 2 ? bestMatch : null; // ← You can tune this threshold
   };
 
-  // Identify unmatched referrals
-  const unmatchedReferrals = Object.entries(referralMap).filter(
-    ([name]) => !getBestMatch(name, matchedStartupNamesRaw),
-  );
-
-  // Get existing unmatched pages
-  const unmatchedPages = existingPages.filter((p) =>
-    p.properties?.Name?.title?.[0]?.text?.content?.startsWith(
-      "⚠️ Unmatched referral for startup:",
-    ),
-  );
-
-  for (const [startupName, referralRows] of unmatchedReferrals) {
-    const pageTitle = `⚠️ Unmatched referral for startup: ${startupName}`;
-
-    // Try to find if a page already exists for this unmatched startup
-    let existingUnmatched = unmatchedPages.find(
-      (p) => p.properties?.Name?.title?.[0]?.text?.content === pageTitle,
-    );
-
-    if (!existingUnmatched) {
-      // Create a new unmatched referral page
-      console.log(
-        `🆕 Creating unmatched referral page for startup: ${startupName}`,
-      );
-      const firstTimestamp = referralRows[0]?.[2] || null;
-      console.log("🕒 Unmatched referral timestamp:", firstTimestamp);
-
-      existingUnmatched = await notion.pages.create({
-        parent: {
-          type: "database_id",
-          database_id: process.env.NOTION_DATABASE_ID,
-        },
-        properties: {
-          Name: { title: [{ text: { content: pageTitle } }] },
-          Status: { select: { name: "⚠️ Unmatched Referral" } },
-          ...(firstTimestamp && !isNaN(Date.parse(firstTimestamp))
-            ? {
-                "Form filled out:": {
-                  date: { start: new Date(firstTimestamp).toISOString() },
-                },
-              }
-            : {}),
-          "Last Updated": { date: { start: new Date().toISOString() } },
-        },
-      });
-
-      // Remove startups from unmatchedReferrals if they will be matched in the founders loop
-      const matchedStartupNames = founders
-        .map((row) => row[22]?.trim().toLowerCase())
-        .filter((name) => name); // remove undefined/null
-
-      // Create the toggle block (Referral Insight)
-      await notion.blocks.children.append({
-        block_id: existingUnmatched.id,
-        children: [
-          {
-            object: "block",
-            type: "toggle",
-            toggle: {
-              rich_text: [
-                {
-                  type: "text",
-                  text: { content: "REFERRAL INSIGHT" },
-                  annotations: { bold: true },
-                },
-              ],
-              children: [],
-            },
-          },
-        ],
-      });
-    }
-
-    // Get the toggle ID
-    const children = await notion.blocks.children.list({
-      block_id: existingUnmatched.id,
-    });
-    const referralToggle = children.results.find((t) => t.type === "toggle");
-
-    // Add each referral as sub-toggles with full detail
-    if (referralToggle) {
-      const existingReferrals = await notion.blocks.children.list({
-        block_id: referralToggle.id,
-      });
-
-      for (let i = 0; i < referralRows.length; i++) {
-        const r = referralRows[i];
-        const referralTitle = `Referral ${i + 1}`;
-        const alreadyExists = existingReferrals.results.some(
-          (b) =>
-            b.type === "toggle" &&
-            b.toggle?.rich_text?.[0]?.text?.content === referralTitle,
-        );
-
-        if (!alreadyExists) {
-          const referralBlock = {
-            object: "block",
-            type: "toggle",
-            toggle: {
-              rich_text: [{ type: "text", text: { content: referralTitle } }],
-              children: [
-                {
-                  object: "block",
-                  type: "table",
-                  table: {
-                    table_width: 2,
-                    has_column_header: false,
-                    has_row_header: false,
-                    children: [
-                      ["Form filled out:", r[2]],
-                      ["Name", r[4]],
-                      ["Email", r[5]],
-                      ["Phone Number", r[6]],
-                      ["LinkedIn", r[7]],
-                      ["Founder's Contact Info", r[8]],
-                      ["Startup Name", r[9]],
-                      ["Founder's Email", r[10]],
-                      ["Company Website", r[11]],
-                      ["# of startups you're a shareholder in", r[12]],
-                      ["Anonymous if we reach out?", r[17]],
-                    ].map(([k, v]) => ({
-                      object: "block",
-                      type: "table_row",
-                      table_row: {
-                        cells: [
-                          [{ type: "text", text: { content: k } }],
-                          [{ type: "text", text: { content: v || "" } }],
-                        ],
-                      },
-                    })),
-                  },
-                },
-                ...[13, 14, 15, 16].map((qIdx, idx) =>
-                  createQuoteToggle(
-                    [
-                      "How do you know the founder? What is your relationship?",
-                      "Describe an episode where the founder demonstrated qualities such as independent thinking, clarity of thought and outstanding performance",
-                      "Think of the person in your first-degree network that is the most ambitious in terms of the above qualities",
-                      "Now, tell us where the founder outperforms this person.",
-                    ][idx],
-                    r[qIdx],
-                  ),
-                ),
-              ],
-            },
-          };
-
-          await notion.blocks.children.append({
-            block_id: referralToggle.id,
-            children: [referralBlock],
-          });
-        }
-      }
-    }
-  }
+  // Remove startups from unmatchedReferrals if they will be matched in the founders loop
+  const matchedStartupNames = founders
+    .map((row) => row[72]?.trim().toLowerCase())
+    .filter((name) => name); // remove undefined/null
 
   for (const row of founders) {
-    const startupName = row[22]?.trim();
+    try {
+    const startupName = row[72]?.trim();
     const normalizedName = startupName?.toLowerCase() || "";
     const matchedKey =
       getBestMatch(normalizedName, Object.keys(referralMap)) || "";
     const referralCount = referralMap[matchedKey]?.length || 0;
     const matchedReferrals = referralMap[matchedKey] || [];
     const founderForm_filled_out = row[2] || null;
-    const founderDeck = row[24]?.trim() || null;
-    const founderCount = Number(row[67]) || 1;
+    const founderDeck = row[74]?.trim() || null;
+    const founderCount = Number(row[69]) || 1;
+
+    // 🌟 Detect Form Type from column 3
+    const formIntent = row[3]?.trim();
+
+    let formType;
+    if (
+      formIntent ===
+      "I know an incredible founder, someone Moonstone should get to know."
+    ) {
+      formType = "Founder Referral";
+    } else if (
+      formIntent === "I am a founder and I want to take my startup to the moon."
+    ) {
+      formType = "Founder";
+    } else if (
+      formIntent ===
+      "I know an incredible entrepreneur, that would be a great searcher for Moonstone's Search Fund."
+    ) {
+      formType = "Searcher Referral";
+    } else if (
+      formIntent ===
+      "I am an entrepreneur and I want to be a searcher for Moonstone's Search Fund."
+    ) {
+      formType = "Searcher";
+    }
+
+    // ✅ Detect referral count logic for Searcher Referrals
+    const normalize = (s) => s?.trim().toLowerCase();
+    const searcherName = normalize(row[37]); // row = searcher row
+
+    const searcherReferrals = rows.filter(
+      (r) =>
+        r[3]?.trim() ===
+          "I know an incredible entrepreneur, that would be a great searcher for Moonstone's Search Fund." &&
+        normalize(r[22]) === searcherName,
+    );
+
+    // 🏷️ Tag SF Referrals status
+    let sfReferralsLabel;
+    if (formType === "Searcher") {
+      const count = searcherReferrals.length;
+      sfReferralsLabel =
+        count >= 5
+          ? "V+ Referrals"
+          : ["I Referral", "II Referrals", "III Referrals", "IV Referrals"][
+              count - 1
+            ] || undefined;
+    }
 
     console.log(
       `\ud83d\udee0 Creating Notion card for ${startupName} with ${referralCount} referrals`,
     );
 
+// ---- helper inside main: getFilledCount; index ranges for founders & teams ----
     const getFilledCount = (row, indices) =>
       indices.reduce((count, i) => count + (row[i]?.trim() ? 1 : 0), 0);
 
-    // Create list of indices for founder (18–78)
-    const founderIndices = Array.from({ length: 64 }, (_, i) => i + 18);
+    // Count answered (founders loop → always founder indices)
+    let allRelevantIndices = [...Array(50)].map((_, i) => 66 + i);
 
-    // Create lists of indices for team members
-    const teamIndices = [
-      Array.from({ length: 11 }, (_, i) => 82 + i),
-      Array.from({ length: 11 }, (_, i) => 93 + i),
-      Array.from({ length: 11 }, (_, i) => 104 + i),
-      Array.from({ length: 11 }, (_, i) => 115 + i),
-    ];
+    // Team members: number from col 115; each member adds 11 cols starting at 116
+    const numTeamMembers = Number(row[117]) || 0;
+    for (let i = 0; i < numTeamMembers; i++) {
+      const startIndex = 118 + i * 11;
+      allRelevantIndices.push(...Array.from({ length: 11 }, (_, j) => startIndex + j));
+    }
 
-    // Merge relevant rows depending on founderCount
-    const applicableTeamIndices = teamIndices.slice(0, founderCount - 1).flat();
-    const allRelevantIndices = founderIndices.concat(applicableTeamIndices);
-
-    // Count answered
     const answeredCount = getFilledCount(row, allRelevantIndices);
     const totalCount = allRelevantIndices.length;
-    const completionPercent = Math.round((answeredCount / totalCount) * 100);
-    const priorityRanking = row[54]
-    ? row[54].split(",").map((s) => s.trim())
-    : [];
+    const completionPercent =
+      totalCount === 0 ? 0 : Math.round((answeredCount / totalCount) * 100);
+    const priorityRanking = row[104]
+      ? row[104].split(",").map((s) => s.trim())
+      : [];
 
     // Try to find an existing page
     const existing = existingPages.find(
@@ -423,7 +770,7 @@ export async function main() {
       parentPage = existing;
 
       // Update only dynamic properties
-      await notion.pages.update({
+      await notionWithRetry.pages.update({
         page_id: parentPage.id,
         properties: {
           "Completion %": { number: completionPercent },
@@ -452,7 +799,7 @@ export async function main() {
       // ⏳ Later: here is where you'd handle block-by-block edits
     } else {
       console.log(`🛠 Creating new page for ${startupName}`);
-      parentPage = await notion.pages.create({
+      parentPage = await notionWithRetry.pages.create({
         parent: {
           type: "database_id",
           database_id: process.env.NOTION_DATABASE_ID,
@@ -461,18 +808,34 @@ export async function main() {
           Name: {
             title: [{ text: { content: startupName || "Unnamed Startup" } }],
           },
-          "Founder Name": {
-            rich_text: [
-              {
-                type: "text",
-                text: { content: row[18] || "No founder name provided" },
-              },
-            ],
-          },
-          "Company Website": { url: row[23] || null },
-          "Founder Email": { email: row[19] || null },
-          "Founder LinkedIn": { url: row[21] || null },
-          "Founder Phone Number": { phone_number: row[20] || null },
+          "Form Type": formType ? { select: { name: formType } } : undefined,
+          "SF Referrals": sfReferralsLabel
+            ? { select: { name: sfReferralsLabel } }
+            : undefined,
+
+          "Searcher Mail": row[38] ? { email: row[38] } : undefined,
+          "Searcher Phone": row[39] ? { phone_number: row[39] } : undefined,
+          "Searcher LinkedIn": row[40] ? { url: row[40] } : undefined,
+          "Searcher Nickname": row[41]
+            ? { rich_text: [{ text: { content: row[41] } }] }
+            : undefined,
+          "Searcher Location": row[42]
+            ? { rich_text: [{ text: { content: row[42] } }] }
+            : undefined,
+          "Searcher Availability": mapAvailabilityOption(row[47])
+          ? { select: { name: mapAvailabilityOption(row[47]) } }
+          : undefined,
+          "Searcher CV": row[43]
+            ? {
+                files: [
+                  {
+                    name: "CV",
+                    external: { url: row[43] },
+                  },
+                ],
+              }
+            : undefined,
+
           Status:
             referralCount === 0
               ? undefined
@@ -489,24 +852,54 @@ export async function main() {
                           ][referralCount - 1],
                   },
                 },
+
+          "Founder Name": {
+            rich_text: [
+              {
+                type: "text",
+                text: { content: row[68] || "No founder name provided" },
+              },
+            ],
+          },
+          "Company Website": { url: row[72] || null },
+          "Founder Email": { email: row[69] || null },
+          "Founder LinkedIn": { url: row[71] || null },
+          "Founder Phone Number": { phone_number: row[70] || null },
+          Status:
+            referralCount === 0
+              ? undefined
+              : {
+                  select: {
+                    name:
+                      referralCount >= 5
+                        ? "V+ Endorsements"
+// ---- Notion property mapping for founders ----
+                        : [
+                            "I Endorsement",
+                            "II Endorsements",
+                            "III Endorsements",
+                            "IV Endorsements",
+                          ][referralCount - 1],
+                  },
+                },
           Founders: { number: founderCount },
           "Business Model": {
-            multi_select: row[25]
-              ? row[25].split(",").map((s) => ({ name: s.trim() }))
+            multi_select: row[75]
+              ? row[75].split(",").map((s) => ({ name: s.trim() }))
               : [],
           },
-          "Where is the company based?": validLocations.includes(row[27])
-            ? { select: { name: row[27] } }
+          "Where is the company based?": validLocations.includes(row[77])
+            ? { select: { name: row[77] } }
             : undefined,
 
-          "What is your current valuation?": validValuations.includes(row[51])
-            ? { select: { name: row[51] } }
+          "What is your current valuation?": validValuations.includes(row[101])
+            ? { select: { name: row[101] } }
             : undefined,
 
           "What next stage is this round funding?": validFundingStages.includes(
-            row[52],
+            row[102],
           )
-            ? { select: { name: row[52] } }
+            ? { select: { name: row[102] } }
             : undefined,
 
           "1. Priority (18 months)": priorityRanking[0]
@@ -533,13 +926,13 @@ export async function main() {
             ? { select: { name: priorityRanking[5] } }
             : undefined,
 
-          // --- 👇 FIXES START HERE 👇 ---
+          "Founded in": { number: Number(row[76]) || null },
 
-          "Founded in": { number: Number(row[26]) || null },
-          // Added a comma here 👇
           "Completion %": { number: completionPercent },
           "Form filled out:": founderForm_filled_out
-            ? { date: { start: new Date(founderForm_filled_out).toISOString() } }
+            ? {
+                date: { start: new Date(founderForm_filled_out).toISOString() },
+              }
             : {},
           ...(founderDeck && {
             Deck: {
@@ -550,8 +943,8 @@ export async function main() {
             date: { start: new Date().toISOString() },
           },
         }, // This curly brace closes the 'properties' object correctly
-      }); 
-
+      });
+      await addStructureBlocks(parentPage.id, formType, row);
       // Then create toggle sections below like normal
     }
 
@@ -567,7 +960,7 @@ export async function main() {
 
     // Ensure FORM toggle is present and get its reference
     let formToggle = (
-      await notion.blocks.children.list({ block_id: parentPage.id })
+      await notionWithRetry.blocks.children.list({ block_id: parentPage.id })
     ).results.find(
       (b) =>
         b.type === "toggle" &&
@@ -583,7 +976,6 @@ export async function main() {
             {
               type: "text",
               text: { content: "Form" },
-              annotations: { bold: true },
             },
           ],
           children: [
@@ -606,7 +998,7 @@ export async function main() {
         },
       };
 
-      const created = await notion.blocks.children.append({
+      const created = await notionWithRetry.blocks.children.append({
         block_id: parentPage.id,
         children: [formBlock],
       });
@@ -614,7 +1006,7 @@ export async function main() {
       formToggle = created.results[0];
 
       // ➕ Append a divider block right after the Form toggle
-      await notion.blocks.children.append({
+      await notionWithRetry.blocks.children.append({
         block_id: parentPage.id,
         children: [
           {
@@ -625,95 +1017,118 @@ export async function main() {
         ],
       });
 
-      await notion.blocks.children.append({
+      if (formType === "Searcher Referral") {
+        // 1) Create the parent toggle "REFERRAL INSIGHT" EMPTY
+        const createdRI = await notionWithRetry.blocks.children.append({
+          block_id: formToggle.id,
+          children: [
+            {
+              object: "block",
+              type: "toggle",
+              toggle: {
+                rich_text: [{ type: "text", text: { content: "REFERRAL INSIGHT" } }],
+                // IMPORTANT: no children here
+              },
+            },
+          ],
+        });
+        await sleep(120);
+        const riToggleId = createdRI.results?.[0]?.id;
+
+        // 2) Append the referral info TABLE as a separate call
+        const tableBlock = createTableBlock([
+          ["Referred Searcher Name", row[18] || ""],
+          ["Referrer's Name",       row[19] || ""],
+          ["Referrer's Email",      row[20] || ""],
+          ["Referrer's LinkedIn",   row[21] || ""],
+          ["Relationship",          row[22] || ""],
+          ["Location",              row[23] || ""],
+          ["Form filled out:",      row[2]  || ""],
+        ]);
+        await appendChildrenSafe(riToggleId, [tableBlock]);
+        await sleep(120);
+
+        // 3) Append each question group as its own section (flat, safe appends)
+        await appendQuestionGroup(
+          notionWithRetry, riToggleId, row,
+          "BASICS", [25, 26, 27, 28]
+        );
+        await sleep(120);
+
+        await appendQuestionGroup(
+          notionWithRetry, riToggleId, row,
+          "THE SEARCHER’S MIND: PROBLEM SOLVING, PRIORITIZATION & PRESSURE",
+          [29, 30]
+        );
+        await sleep(120);
+
+        await appendQuestionGroup(
+          notionWithRetry, riToggleId, row,
+          "AGI-PROOFING THE FUTURE: AI LEVERAGE IN ACTION",
+          [31, 32, 33]
+        );
+        await sleep(120);
+
+        await appendQuestionGroup(
+          notionWithRetry, riToggleId, row,
+          "THE MOONSTONE DNA: TRUST, CONFLICT, AND STRATEGIC LEADERSHIP",
+          [34, 35, 36]
+        );
+      }
+
+      // 1) Create empty "Team Inputs" toggle
+      const teamToggleRes = await notionWithRetry.blocks.children.append({
         block_id: parentPage.id,
         children: [
           {
             object: "block",
             type: "toggle",
-            toggle: {
-              rich_text: [
-                {
-                  type: "text",
-                  text: { content: "Team Inputs" },
-                  annotations: { bold: true },
-                },
-              ],
-              children: [
-                {
-                  object: "block",
-                  type: "paragraph",
-                  paragraph: {
-                    rich_text: [
-                      {
-                        type: "text",
-                        text: {
-                          content:
-                            "Responses from the Moonstone team are grouped here.",
-                        },
-                      },
-                    ],
-                  },
-                },
-                {
-                  object: "block",
-                  type: "table",
-                  table: {
-                    table_width: 2,
-                    has_column_header: false,
-                    has_row_header: false,
-                    children: [
-                      "round size",
-                      "valuation",
-                      "moonstone ticket",
-                      "other investors",
-                    ].map((label) => ({
-                      object: "block",
-                      type: "table_row",
-                      table_row: {
-                        cells: [
-                          [{ type: "text", text: { content: label } }],
-                          [{ type: "text", text: { content: "" } }],
-                        ],
-                      },
-                    })),
-                  },
-                },
-                {
-                  object: "block",
-                  type: "toggle",
-                  toggle: {
-                    rich_text: [
-                      {
-                        type: "text",
-                        text: { content: "Assessment Notes" },
-                      },
-                    ],
-                    children: [
-                      {
-                        object: "block",
-                        type: "quote",
-                        quote: {
-                          rich_text: [
-                            {
-                              type: "text",
-                              text: { content: "" },
-                            },
-                          ],
-                        },
-                      },
-                    ],
-                  },
-                },
-              ],
-            },
+            toggle: { rich_text: [{ type: "text", text: { content: "Team Inputs" } }] },
           },
         ],
       });
+      const teamId = teamToggleRes.results?.[0]?.id;
+
+      // 2) Append paragraph + table
+      await appendChildrenSafe(teamId, [
+        { object: "block", type: "paragraph", paragraph: { rich_text: [{ type: "text", text: { content: "Responses from the Moonstone team are grouped here." } }] } },
+        {
+          object: "block",
+          type: "table",
+          table: {
+            table_width: 2,
+            has_column_header: false,
+            has_row_header: false,
+            children: ["round size", "valuation", "moonstone ticket", "other investors"].map((label) => ({
+              object: "block",
+              type: "table_row",
+              table_row: {
+                cells: [
+                  [{ type: "text", text: { content: label } }],
+                  [{ type: "text", text: { content: "" } }],
+                ],
+              },
+            })),
+          },
+        },
+      ]);
+
+      // 3) Append "Assessment Notes" toggle, then quote
+      const assessRes = await notionWithRetry.blocks.children.append({
+        block_id: teamId,
+        children: [
+          { object: "block", type: "toggle", toggle: { rich_text: [{ type: "text", text: { content: "Assessment Notes" } }] } },
+        ],
+      });
+      const assessId = assessRes.results?.[0]?.id;
+
+      await appendChildrenSafe(assessId, [
+        { object: "block", type: "quote", quote: { rich_text: [{ type: "text", text: { content: "" } }] } },
+      ]);
     }
 
     // ⚠️ REFETCH children from the Form toggle
-    const formChildren = await notion.blocks.children.list({
+    const formChildren = await notionWithRetry.blocks.children.list({
       block_id: formToggle.id,
     });
     const toggles = formChildren.results;
@@ -734,21 +1149,34 @@ export async function main() {
               {
                 type: "text",
                 text: { content: title.toUpperCase() },
-                annotations: { bold: true },
               },
             ],
             children: [],
           },
         };
-        await notion.blocks.children.append({
+        // if newToggle.toggle?.children?.length > 0 → split it
+        const title = newToggle?.toggle?.rich_text?.[0]?.text?.content || "Untitled";
+        const created = await notionWithRetry.blocks.children.append({
           block_id: formToggle.id,
-          children: [newToggle],
+          children: [
+            {
+              object: "block",
+              type: "toggle",
+              toggle: {
+                rich_text: [{ type: "text", text: { content: title } }],
+              },
+            },
+          ],
         });
+        const newToggleId = created.results?.[0]?.id;
+
+        // then append its children separately
+        await appendChildrenSafe(newToggleId, newToggle.toggle.children);
       }
     }
 
     // ✅ REFRESH the list of children *after* creating new toggles
-    const updatedFormChildren = await notion.blocks.children.list({
+    const updatedFormChildren = await notionWithRetry.blocks.children.list({
       block_id: formToggle.id,
     });
 
@@ -758,43 +1186,58 @@ export async function main() {
       );
 
     // Fill REFERRAL INSIGHT
+    // Fill REFERRAL INSIGHT  (two-phase append, no deep nesting in one call)
     const referralToggle = getToggle("Referral Insight");
-    if (referralToggle && referralMap[matchedKey]) {
-      const existingReferrals = await notion.blocks.children.list({
+    if (referralToggle && matchedReferrals.length > 0) {
+      // 1) Keep only one "Referral N" per title, archive extras
+      const existingReferrals = await notionWithRetry.blocks.children.list({
         block_id: referralToggle.id,
       });
-
-      // Clean up old toggles with duplicate titles (e.g., "Referral 1", etc.)
-      const titlesToDelete = new Set();
-      for (const block of existingReferrals.results) {
-        if (block.type === "toggle") {
-          const content = block.toggle?.rich_text?.[0]?.text?.content || "";
-          if (content.startsWith("Referral")) {
-            if (titlesToDelete.has(content)) {
-              await notion.blocks.update({
-                block_id: block.id,
-                archived: true,
-              });
+      const seenTitles = new Set();
+      for (const b of existingReferrals.results) {
+        if (b.type === "toggle") {
+          const t = b.toggle?.rich_text?.[0]?.text?.content || "";
+          if (t.startsWith("Referral ")) {
+            if (seenTitles.has(t)) {
+              await notionWithRetry.blocks.update({ block_id: b.id, archived: true });
+              await sleep(60);
             } else {
-              titlesToDelete.add(content);
+              seenTitles.add(t);
             }
           }
         }
       }
 
-      for (let i = 0; i < referralMap[matchedKey].length; i++) {
+      // 2) Upsert each "Referral i" as an empty toggle, then append children
+      for (let i = 0; i < matchedReferrals.length; i++) {
+        const r = matchedReferrals[i];
         const referralTitle = `Referral ${i + 1}`;
-        const r = referralMap[matchedKey][i];
-        const existingReferrals = await notion.blocks.children.list({
-          block_id: referralToggle.id,
-        });
 
-        let referralBlock = existingReferrals.results.find(
-          (b) =>
-            b.type === "toggle" &&
-            b.toggle?.rich_text?.[0]?.text?.content === referralTitle,
+        // 2a) find or create the Referral i toggle (no nested children in this call)
+        let referralBlock = (
+          await notionWithRetry.blocks.children.list({ block_id: referralToggle.id })
+        ).results.find(
+          (b) => b.type === "toggle" && b.toggle?.rich_text?.[0]?.text?.content === referralTitle
         );
 
+        if (!referralBlock) {
+          const created = await notionWithRetry.blocks.children.append({
+            block_id: referralToggle.id,
+            children: [
+              {
+                object: "block",
+                type: "toggle",
+                toggle: {
+                  rich_text: [{ type: "text", text: { content: referralTitle } }],
+                },
+              },
+            ],
+          });
+          await sleep(120);
+          referralBlock = created.results?.[0];
+        }
+
+        // 2b) ensure a 2-col table exists/updated as the first child
         const tableData = [
           ["Form filled out:", r[2]],
           ["Name", r[4]],
@@ -809,111 +1252,76 @@ export async function main() {
           ["Anonymous if we reach out?", r[17]],
         ];
 
+        const childList = await notionWithRetry.blocks.children.list({ block_id: referralBlock.id });
+        let tableBlock = childList.results.find((b) => b.type === "table");
+
+        if (!tableBlock) {
+          // append a fresh table
+          // Build the table block
+          const tableBlock = {
+            object: "block",
+            type: "table",
+            table: {
+              table_width: 2,
+              has_column_header: false,
+              has_row_header: false,
+              children: tableData.map(([k, v]) => ({
+                object: "block",
+                type: "table_row",
+                table_row: {
+                  cells: [
+                    [{ type: "text", text: { content: (k ?? "") } }],
+                    [{ type: "text", text: { content: (v ?? "").toString() } }],
+                  ],
+                },
+              })),
+            },
+          };
+
+          // Append safely (filters out undefined, no-op on empty)
+          await appendChildrenSafe(referralBlock.id, [tableBlock]);
+          await sleep(120);
+          
+        } else {
+          // update rows in place if labels match
+          const rows = await notionWithRetry.blocks.children.list({ block_id: tableBlock.id });
+          for (let j = 0; j < Math.min(rows.results.length, tableData.length); j++) {
+            const rowBlock = rows.results[j];
+            const [label, value] = tableData[j];
+            const curLabel = rowBlock.table_row?.cells?.[0]?.[0]?.text?.content || "";
+            const curValue = rowBlock.table_row?.cells?.[1]?.[0]?.text?.content || "";
+            if (curLabel === label && curValue !== (value || "")) {
+              await notionWithRetry.blocks.update({
+                block_id: rowBlock.id,
+                table_row: {
+                  cells: [
+                    [{ type: "text", text: { content: label } }],
+                    [{ type: "text", text: { content: (value || "").toString() } }],
+                  ],
+                },
+              });
+              await sleep(60);
+            }
+          }
+        }
+
+        // 2c) append/update the four quote questions under this referral
         const quoteTitles = [
           "How do you know the founder? What is your relationship?",
           "Describe an episode where the founder demonstrated qualities such as independent thinking, clarity of thought and outstanding performance",
           "Think of the person in your first-degree network that is the most ambitious in terms of the above qualities",
           "Now, tell us where the founder outperforms this person.",
         ];
+        const quoteAnswers = [13, 14, 15, 16].map((qIdx) => r[qIdx] || "");
 
-        const quoteAnswers = [13, 14, 15, 16].map((qIdx) => r[qIdx]);
-
-        if (!referralBlock) {
-          // Create the whole block if missing
-          referralBlock = {
-            object: "block",
-            type: "toggle",
-            toggle: {
-              rich_text: [{ type: "text", text: { content: referralTitle } }],
-              children: [
-                {
-                  object: "block",
-                  type: "table",
-                  table: {
-                    table_width: 2,
-                    has_column_header: false,
-                    has_row_header: false,
-                    children: tableData.map(([k, v]) => ({
-                      object: "block",
-                      type: "table_row",
-                      table_row: {
-                        cells: [
-                          [{ type: "text", text: { content: k } }],
-                          [{ type: "text", text: { content: v || "" } }],
-                        ],
-                      },
-                    })),
-                  },
-                },
-                ...quoteTitles.map((q, idx) =>
-                  createQuoteToggle(q, quoteAnswers[idx]),
-                ),
-              ],
-            },
-          };
-          await notion.blocks.children.append({
-            block_id: referralToggle.id,
-            children: [referralBlock],
-          });
-        } else {
-          // Update table rows and quotes
-          const referralChildren = await notion.blocks.children.list({
-            block_id: referralBlock.id,
-          });
-          const table = referralChildren.results.find(
-            (b) => b.type === "table",
-          );
-
-          if (table) {
-            const tableRows = await notion.blocks.children.list({
-              block_id: table.id,
-            });
-            for (let j = 0; j < tableRows.results.length; j++) {
-              const rowBlock = tableRows.results[j];
-              const [expectedLabel, expectedValue] = tableData[j];
-              const currentLabel =
-                rowBlock.table_row?.cells?.[0]?.[0]?.text?.content || "";
-              const currentValue =
-                rowBlock.table_row?.cells?.[1]?.[0]?.text?.content || "";
-
-              if (
-                currentLabel === expectedLabel &&
-                currentValue !== expectedValue
-              ) {
-                await notion.blocks.update({
-                  block_id: rowBlock.id,
-                  table_row: {
-                    cells: [
-                      [{ type: "text", text: { content: expectedLabel } }],
-                      [
-                        {
-                          type: "text",
-                          text: { content: expectedValue || "" },
-                        },
-                      ],
-                    ],
-                  },
-                });
-              }
-            }
-          }
-
-          // Update quote toggles
-          await updateMultipleQuotes(
-            referralBlock.id,
-            quoteTitles,
-            quoteAnswers,
-          );
-        }
+        await updateMultipleQuotes(referralBlock.id, quoteTitles, quoteAnswers);
       }
     }
 
     // ✅ Replacement for BASICS toggle
     const basicsToggle = getToggle("Basics");
     if (basicsToggle) {
-      const basicsChildren = await notion.blocks.children.list({
-        block_id: basicsToggle.id,
-      });
+      const basicsChildren = await notionWithRetry.blocks.children.list({ block_id: basicsToggle.id });
       const titles = [
         "Why is it the best location?",
         "What is your vision of the market you operate in?",
@@ -922,14 +1330,14 @@ export async function main() {
         "What is @About your startup's Unique Selling Proposition?",
         "Who are @About your startup's competitors? What do you understand about your business that they don't?",
       ];
-      const answers = [28, 29, 30, 31, 32, 33].map((i) => row[i]);
+      const answers = [78, 79, 80, 81, 82, 83].map((i) => row[i]);
 
       const unique = new Set();
       for (const block of basicsChildren.results) {
         if (block.type === "toggle") {
           const label = block.toggle?.rich_text?.[0]?.text?.content;
           if (unique.has(label)) {
-            await notion.blocks.update({ block_id: block.id, archived: true });
+            await notionWithRetry.blocks.update({ block_id: block.id, archived: true }); await sleep(60);
           } else {
             unique.add(label);
           }
@@ -938,14 +1346,14 @@ export async function main() {
 
       await updateMultipleQuotes(basicsToggle.id, titles, answers);
 
-      const patent = row[34]?.trim().toLowerCase() === "yes";
+      const patent = row[84]?.trim().toLowerCase() === "yes";
       const patentExists = basicsChildren.results?.some(
         (b) =>
           b.type === "to_do" &&
           b.to_do?.rich_text?.[0]?.text?.content === "Patent?",
       );
       if (!patentExists) {
-        await notion.blocks.children.append({
+        await notionWithRetry.blocks.children.append({
           block_id: basicsToggle.id,
           children: [
             {
@@ -976,11 +1384,9 @@ export async function main() {
         "How much revenue has @About your startup generated in the last 12 months?",
         "How much revenue can @About your startup generate in the next 12 months?",
       ];
-      const financialAnswers = [36, 36, 37, 38, 46].map((i) => row[i]);
+      const financialAnswers = [86, 87, 94, 95, 96].map((i) => row[i]);
 
-      const existingFinancialChildren = await notion.blocks.children.list({
-        block_id: financialsToggle.id,
-      });
+      const existingFinancialChildren = await notionWithRetry.blocks.children.list({ block_id: financialsToggle.id });
 
       // Archive duplicates
       const seen = new Set();
@@ -988,7 +1394,7 @@ export async function main() {
         if (block.type === "toggle") {
           const label = block.toggle?.rich_text?.[0]?.text?.content;
           if (seen.has(label)) {
-            await notion.blocks.update({ block_id: block.id, archived: true });
+            await notionWithRetry.blocks.update({ block_id: block.id, archived: true }); await sleep(60);
           } else {
             seen.add(label);
           }
@@ -1012,52 +1418,48 @@ export async function main() {
       );
 
       if (!revenueToggle) {
-        const tableBlock = {
-          object: "block",
-          type: "toggle",
-          toggle: {
-            rich_text: [
-              {
-                type: "text",
-                text: {
-                  content:
-                    "How much revenue has your startup generated in each of these months?",
-                },
-              },
-            ],
-            children: [
-              {
-                object: "block",
-                type: "table",
-                table: {
-                  table_width: 2,
-                  has_column_header: false,
-                  has_row_header: false,
-                  children: [40, 41, 42, 43, 44, 45].map((i, idx) => ({
-                    object: "block",
-                    type: "table_row",
-                    table_row: {
-                      cells: [
-                        [
-                          {
-                            type: "text",
-                            text: { content: `${6 - idx} month(s) ago` },
-                          },
-                        ],
-                        [{ type: "text", text: { content: row[i] || "" } }],
-                      ],
-                    },
-                  })),
-                },
-              },
-            ],
-          },
-        };
-
-        await notion.blocks.children.append({
+        // 1) create the toggle EMPTY
+        const createdRevToggle = await notionWithRetry.blocks.children.append({
           block_id: financialsToggle.id,
-          children: [tableBlock],
+          children: [
+            {
+              object: "block",
+              type: "toggle",
+              toggle: {
+                rich_text: [{
+                  type: "text",
+                  text: { content: "How much revenue has your startup generated in each of these months?" }
+                }],
+              },
+            },
+          ],
         });
+        await sleep(120);
+        const revToggleId = createdRevToggle.results?.[0]?.id;
+
+        // 2) append the table as a separate child
+        await appendChildrenSafe(revToggleId, [
+          {
+            object: "block",
+            type: "table",
+            table: {
+              table_width: 2,
+              has_column_header: false,
+              has_row_header: false,
+              children: [90, 91, 92, 93, 94, 95].map((i, idx) => ({
+                object: "block",
+                type: "table_row",
+                table_row: {
+                  cells: [
+                    [{ type: "text", text: { content: `${6 - idx} month(s) ago` } }],
+                    [{ type: "text", text: { content: row[i] || "" } }],
+                  ],
+                },
+              })),
+            },
+          },
+        ]);
+        await sleep(120);
       }
     }
 
@@ -1071,9 +1473,9 @@ export async function main() {
         "What has been the hardest challenge related to people's management?",
         "What is your funding need? Why are you looking for capital?",
       ];
-      const challengeAnswers = [47, 48, 49, 50, 53].map((i) => row[i]); // ⚠️ Includes index 50 for funding need
+      const challengeAnswers = [97, 98, 99, 100, 102].map((i) => row[i]); // ⚠️ Includes index 50 for funding need
 
-      const challengeChildren = await notion.blocks.children.list({
+      const challengeChildren = await notionWithRetry.blocks.children.list({
         block_id: challengeToggle.id,
       });
 
@@ -1083,7 +1485,7 @@ export async function main() {
         if (block.type === "toggle") {
           const label = block.toggle?.rich_text?.[0]?.text?.content;
           if (unique.has(label)) {
-            await notion.blocks.update({ block_id: block.id, archived: true });
+            await notionWithRetry.blocks.update({ block_id: block.id, archived: true }); await sleep(60);
           } else {
             unique.add(label);
           }
@@ -1110,9 +1512,9 @@ export async function main() {
         "Why them, how much would you like to pay them and why would they accept or not accept?",
         "When do you believe that they'll actually join your team?",
       ];
-      const hrAnswers = [55, 56, 57, 58, 59, 60, 61].map((i) => row[i]);
+      const hrAnswers = [105, 106, 107, 108, 109, 110, 111].map((i) => row[i]);
 
-      const hrChildren = await notion.blocks.children.list({
+      const hrChildren = await notionWithRetry.blocks.children.list({
         block_id: hrToggle.id,
       });
 
@@ -1122,7 +1524,7 @@ export async function main() {
         if (block.type === "toggle") {
           const label = block.toggle?.rich_text?.[0]?.text?.content;
           if (unique.has(label)) {
-            await notion.blocks.update({ block_id: block.id, archived: true });
+            await notionWithRetry.blocks.update({ block_id: block.id, archived: true }); await sleep(60);
           } else {
             unique.add(label);
           }
@@ -1143,9 +1545,9 @@ export async function main() {
         "What is the timeline you envision for Moonstone's eventual exit from @About your startup?",
         "Give us more context — what year will it be, what milestones will you have reached, and what valuation will the market be willing to pay to acquire @About your Startup?",
       ];
-      const exitAnswers = [62, 63, 64, 65, 66].map((i) => row[i]);
+      const exitAnswers = [112, 113, 114, 115, 116].map((i) => row[i]);
 
-      const exitChildren = await notion.blocks.children.list({
+      const exitChildren = await notionWithRetry.blocks.children.list({
         block_id: exitToggle.id,
       });
 
@@ -1155,7 +1557,7 @@ export async function main() {
         if (block.type === "toggle") {
           const label = block.toggle?.rich_text?.[0]?.text?.content;
           if (unique.has(label)) {
-            await notion.blocks.update({ block_id: block.id, archived: true });
+            await notionWithRetry.blocks.update({ block_id: block.id, archived: true }); await sleep(60);
           } else {
             unique.add(label);
           }
@@ -1169,21 +1571,21 @@ export async function main() {
     // ✅ TEAM-INSIGHTS (deduplicated like Basics)
     const teamToggle = getToggle("Team-Insights");
     if (teamToggle) {
-      const existingChildren = await notion.blocks.children.list({
+      const existingChildren = await notionWithRetry.blocks.children.list({
         block_id: teamToggle.id,
       });
 
       const tableIndices = [
-        [82, 83, 84, 85, 86],
-        [93, 94, 95, 96, 97],
-        [104, 105, 106, 107, 108],
-        [115, 116, 117, 118, 119],
+        [132, 133, 134, 135, 136],
+        [143, 144, 145, 146, 147],
+        [154, 155, 156, 157, 158],
+        [165, 166, 167, 168, 169],
       ];
       const qaIndices = [
-        [87, 88, 89, 90, 91, 92],
-        [98, 99, 100, 101, 102, 103],
-        [109, 110, 111, 112, 113, 114],
-        [120, 121, 122, 123, 124, 125],
+        [137, 138, 139, 140, 141, 142],
+        [148, 149, 150, 151, 152, 153],
+        [159, 160, 161, 162, 163, 164],
+        [170, 171, 172, 173, 174, 175],
       ];
       const qaTitles = [
         "Tell us what @Contact info would never say about themselves",
@@ -1205,14 +1607,15 @@ export async function main() {
         );
         const memberBlock = matchingBlocks[0];
         for (let j = 1; j < matchingBlocks.length; j++) {
-          await notion.blocks.update({
+          await notionWithRetry.blocks.update({
             block_id: matchingBlocks[j].id,
             archived: true,
           });
+          await sleep(60); 
         }
 
         const existingMemberChildren = memberBlock
-          ? await notion.blocks.children.list({ block_id: memberBlock.id })
+          ? await notionWithRetry.blocks.children.list({ block_id: memberBlock.id })
           : { results: [] };
 
         // Archive duplicate inner blocks
@@ -1222,7 +1625,8 @@ export async function main() {
             block.toggle?.rich_text?.[0]?.text?.content ||
             block.table_row?.cells?.[0]?.[0]?.text?.content;
           if (label && seen.has(label)) {
-            await notion.blocks.update({ block_id: block.id, archived: true });
+            await notionWithRetry.blocks.update({ block_id: block.id, archived: true });
+            await sleep(60);
           } else if (label) {
             seen.add(label);
           }
@@ -1253,7 +1657,7 @@ export async function main() {
 
         const qAnswers =
           i === 0
-            ? Array.from({ length: 14 }, (_, j) => row[73 + j])
+            ? Array.from({ length: 14 }, (_, j) => row[123 + j])
             : qaIndices[i - 1].map((idx) => row[idx] || "");
 
         const quoteBlocks = [];
@@ -1268,9 +1672,7 @@ export async function main() {
           );
 
           if (oldBlock) {
-            const oldChildren = await notion.blocks.children.list({
-              block_id: oldBlock.id,
-            });
+            const oldChildren = await notionWithRetry.blocks.children.list({ block_id: oldBlock.id });
             const existingText =
               oldChildren?.results?.[0]?.[oldChildren.results[0].type]
                 ?.rich_text?.[0]?.text?.content || "";
@@ -1315,14 +1717,10 @@ export async function main() {
         children.push(...quoteBlocks);
 
         // Append or create the TEAM MEMBER toggle
+        // Append or create the TEAM MEMBER toggle (two-phase, no deep nesting)
         if (children.length > 0) {
-          if (memberBlock) {
-            await notion.blocks.children.append({
-              block_id: memberBlock.id,
-              children,
-            });
-          } else {
-            await notion.blocks.children.append({
+          if (!memberBlock) {
+            const created = await notionWithRetry.blocks.children.append({
               block_id: teamToggle.id,
               children: [
                 {
@@ -1330,12 +1728,20 @@ export async function main() {
                   type: "toggle",
                   toggle: {
                     rich_text: [{ type: "text", text: { content: title } }],
-                    children,
                   },
                 },
               ],
             });
+            await sleep(120);
+            memberBlock = created.results?.[0];
           }
+
+          // append the prepared children in a separate call
+          await notionWithRetry.blocks.children.append({
+            block_id: memberBlock.id,
+            children,
+          });
+          await sleep(120);
         }
       }
     }
@@ -1349,20 +1755,604 @@ export async function main() {
       (p) =>
         p.properties?.Name?.title?.[0]?.text?.content === unmatchedPageTitle,
     );
-    if (previouslyUnmatched) {
-      console.log(
-        `🗑 Deleting unmatched page now that ${startupName} has been matched`,
+      if (previouslyUnmatched) {
+        console.log(
+          `🗑 Deleting unmatched page now that ${startupName} has been matched`,
+        );
+        await notionWithRetry.pages.update({
+          page_id: previouslyUnmatched.id,
+          archived: true,
+        });
+      }
+      } catch (err) {
+      const startupName = (row?.[72] || "Unknown");
+      console.error(
+        `⚠️ Skipping founder '${startupName}' due to:`,
+        err?.code || err?.message || err
       );
-      await notion.pages.update({
-        page_id: previouslyUnmatched.id,
+      }
+  }
+
+// 🔧 Helper to group Q&A quote blocks by question columns
+// ---- createQAgroup(row, indices) ----
+function createQAgroup(row, columnIndices) {
+  return columnIndices
+    .filter((i) => row[i]?.trim())
+    .map((i) => ({
+      object: "block",
+      type: "toggle",
+      toggle: {
+        rich_text: [
+          {
+            type: "text",
+            text: {
+              content: allQuestions[i] || `Question ${i}`,
+            },
+          },
+        ],
+        children: [
+          {
+            object: "block",
+            type: "quote",
+            quote: {
+              rich_text: [
+                {
+                  type: "text",
+                  text: {
+                    content: row[i].trim(),
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    }));
+}
+
+// 🧩 Wrap children in a toggle with a title
+// ---- getToggle(title, children) ----
+function getToggle(title, children) {
+  return {
+    object: "block",
+    type: "toggle",
+    toggle: {
+      rich_text: [{ type: "text", text: { content: title } }],
+      // never let undefined or holes through:
+      children: Array.isArray(children) ? children.filter(Boolean) : [],
+    },
+  };
+}
+
+// ---- appendQuestionGroup(notion, parentId, row, title, indices) ----
+    async function appendQuestionGroup(notion, parentId, row, title, indices) {
+      console.log(`➕ Appending section "${title}" with ${indices.length} questions to ${parentId}`);
+
+      // 1) Create the section toggle
+      const sectionRes = await notionWithRetry.blocks.children.append({
+        block_id: parentId,
+        children: [
+          {
+            object: "block",
+            type: "toggle",
+            toggle: { rich_text: [{ type: "text", text: { content: title } }] },
+          },
+        ],
+      });
+      const sectionId = sectionRes.results?.[0]?.id;
+      await sleep(100);
+
+      // 2) One toggle per question, then a quote with the answer
+      for (const i of indices) {
+        const qTitle =
+          (typeof allQuestions !== "undefined" && allQuestions[i]) || `Question ${i}`;
+
+        const qRes = await notionWithRetry.blocks.children.append({
+          block_id: sectionId,
+          children: [
+            {
+              object: "block",
+              type: "toggle",
+              toggle: { rich_text: [{ type: "text", text: { content: qTitle } }] },
+            },
+          ],
+        });
+        const qId = qRes.results?.[0]?.id;
+        await sleep(80);
+
+        const answer = (row?.[i]?.trim?.() || "No response");
+        await notionWithRetry.blocks.children.append({
+          block_id: qId,
+          children: [
+            {
+              object: "block",
+              type: "quote",
+              quote: { rich_text: [{ type: "text", text: { content: answer } }] },
+            },
+          ],
+        });
+        await sleep(80);
+      }
+    }
+
+// ✅ Creates an empty table block (step 1 of 2)
+// ---- createEmptyTableBlock() ----
+function createEmptyTableBlock() {
+  return {
+    object: "block",
+    type: "table",
+    table: {
+      table_width: 2,
+      has_column_header: true,
+      has_row_header: false,
+    },
+  };
+}
+
+// Build an array of paragraph blocks from [label, value] pairs
+function createReferralInsightBlocks(entries) {
+  return entries.map(([label, value]) => ({
+    object: "block",
+    type: "paragraph",
+    paragraph: {
+      rich_text: [
+        {
+          type: "text",
+          text: {
+            content: `${label}: ${value || "No response"}`,
+          },
+        },
+      ],
+    },
+  }));
+}
+
+// ---- addSearcherBlocks(pageId, row, searcherReferrals) ----
+async function addSearcherBlocks(pageId, row, searcherReferrals) {
+  const existingBlocks = await notionWithRetry.blocks.children.list({
+    block_id: pageId,
+  });
+  const formToggle = existingBlocks.results.find(
+    (b) =>
+      b.type === "toggle" && b.toggle?.rich_text?.[0]?.text?.content === "Form",
+  );
+
+  let formToggleId;
+
+  if (formToggle) {
+    formToggleId = formToggle.id;
+  } else {
+    const created = await notionWithRetry.blocks.children.append({
+      block_id: pageId,
+      children: [
+        {
+          object: "block",
+          type: "toggle",
+          toggle: {
+            rich_text: [{ type: "text", text: { content: "Form" } }],
+            children: [],
+          },
+        },
+      ],
+    });
+    formToggleId = created.results?.[0]?.id;
+  }
+  
+  // Finally add divider + Team toggle
+  // append the divider alone
+  await appendChildrenSafe(formToggleId, [
+    { object: "block", type: "divider", divider: {} },
+  ]);
+
+  // Step 2.1 — Add the toggle block "REFERRAL INSIGHT"
+  const referralInsightToggleRes = await notionWithRetry.blocks.children.append({
+    block_id: formToggleId,
+    children: [
+      {
+        object: "block",
+        type: "toggle",
+        toggle: {
+          rich_text: [
+            {
+              type: "text",
+              text: { content: "REFERRAL INSIGHT" },
+            },
+          ],
+        },
+      },
+    ],
+  });
+  const referralInsightToggleId = referralInsightToggleRes.results[0].id;
+
+  // Step 2.2 — Append an empty table block
+  const tableBlockRes = await notionWithRetry.blocks.children.append({
+    block_id: referralInsightToggleId,
+    children: [
+      {
+        object: "block",
+        type: "table",
+        table: {
+          table_width: 2,
+          has_column_header: true,
+          has_row_header: false,
+          children: generateTableRows([
+            ["Referred Searcher Name", row[18]],
+            ["Referrer's Name", row[19]],
+            ["Referrer's Email", row[20]],
+            ["Referrer's LinkedIn", row[21]],
+            ["Relationship", row[22]],
+            ["Location", row[23]],
+            ["Form filled out:", row[2] || ""],
+          ]),
+        },
+      },
+    ],
+  });
+  const tableBlockId = tableBlockRes.results[0].id;
+
+  // Append each question group as its own section (flat appends)
+  await appendQuestionGroup(notionWithRetry, riToggle.id, row, "BASICS", [25, 26, 27, 28]);
+  await sleep(80);
+
+  await appendQuestionGroup(
+    notionWithRetry, riToggle.id, row,
+    "THE SEARCHER’S MIND: PROBLEM SOLVING, PRIORITIZATION & PRESSURE",
+    [29, 30]
+  );
+  await sleep(80);
+
+  await appendQuestionGroup(
+    notionWithRetry, riToggle.id, row,
+    "AGI-PROOFING THE FUTURE: AI LEVERAGE IN ACTION",
+    [31, 32, 33]
+  );
+  await sleep(80);
+
+  await appendQuestionGroup(
+    notionWithRetry, riToggle.id, row,
+    "THE MOONSTONE DNA: TRUST, CONFLICT, AND STRATEGIC LEADERSHIP",
+    [34, 35, 36]
+  );
+
+  await notionWithRetry.blocks.children.append({
+    block_id: formToggleId,
+    children: qaSections,
+  });
+  await sleep(120);
+
+  // then call a small helper that builds Team Inputs in two phases (from Patch #1)
+  await addTeamInputs(formToggleId);
+
+  // helper you can place near where you build structure blocks:
+  async function addTeamInputs(parentId) {
+    // paste the three-step code from Patch #1 here,
+    // but replace `parentPage.id` with `parentId`
+  }
+}
+
+// ---- addStructureBlocks(pageId, formType, row) ----
+    async function addStructureBlocks(pageId, formType, row) {
+      await notionWithRetry.blocks.children.append({
+        block_id: pageId,
+        children: [
+          // Form
+          {
+            object: "block",
+            type: "toggle",
+            toggle: {
+              rich_text: [{ type: "text", text: { content: "Form" } }],
+              children: [
+                {
+                  object: "block",
+                  type: "paragraph",
+                  paragraph: {
+                    rich_text: [
+                      {
+                        type: "text",
+                        text: { content: "Responses from the founder form are grouped here." },
+                      },
+                    ],
+                  },
+                },
+              ],
+            },
+          },
+          // THE ONE divider we keep for this page
+          { object: "block", type: "divider", divider: {} },
+
+          // Team Inputs
+          {
+            object: "block",
+            type: "toggle",
+            toggle: {
+              rich_text: [{ type: "text", text: { content: "Team Inputs" } }],
+              children: [
+                {
+                  object: "block",
+                  type: "paragraph",
+                  paragraph: {
+                    rich_text: [
+                      {
+                        type: "text",
+                        text: { content: "Responses from the Moonstone team are grouped here." },
+                      },
+                    ],
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      });
+
+      // After creating the skeleton, ensure we have exactly one divider
+      await ensureSingleDivider(pageId);
+    }
+
+  // Optionally handle inner blocks for "Searcher" and "Searcher Referral"
+  if (formType === "Searcher") {
+    const formToggleId = created.results[0].id;
+
+    await appendQuestionGroup(notion, formToggleId, row, "BASICS", [44, 45, 46, 47]);
+    await appendQuestionGroup(
+      notion,
+      formToggleId,
+      row,
+      "YOUR MIND: PROBLEM SOLVING, PRIORITIZATION & PRESSURE",
+      [48, 49, 50, 51]
+    );
+    await appendQuestionGroup(
+      notion,
+      formToggleId,
+      row,
+      "AI LEVERAGE IN ACTION: PREPARING FOR THE AGI ECONOMY",
+      [52, 53, 54, 55, 56]
+    );
+    await appendQuestionGroup(
+      notion,
+      formToggleId,
+      row,
+      "THE MOONSTONE DNA: TRUST, CONFLICT, STRATEGIC LEADERSHIP, NETWORK",
+      [57, 58, 59, 60, 61, 62, 63, 64]
+    );
+  }
+    console.log("🎉 All founder pages created successfully.");
+
+    await processUnmatchedSearcherReferrals(searchers, searcherReferrals);
+    await handleSearcherPages(searchers, searcherReferrals, notionWithRetry);
+}
+
+  
+// ---- handleSearcherPages(searchers, searcherReferrals, notion) ----
+async function handleSearcherPages(searchers, searcherReferrals, notion) {
+  const normalize = (str) => str?.trim().toLowerCase();
+
+  for (const row of searchers) {
+    const searcherName = normalize(row[37]);
+
+    const matchedReferrals = searcherReferrals.filter(
+      (r) => normalize(r[22]) === searcherName,
+    );
+    const searcherRefCount = matchedReferrals.length;
+
+    const formType = "Searcher";
+    const sfReferralsLabel =
+      searcherRefCount >= 5
+        ? "V+ Referrals"
+        : ["I Referral", "II Referrals", "III Referrals", "IV Referrals"][
+            searcherRefCount - 1
+          ] || undefined;
+
+    // 1) Create the Searcher page
+    const searcherTitle = (row[37] || "").trim();
+    if (!searcherTitle) {
+      console.warn("⏭️ Skipping Searcher with empty Name (col 37).");
+      continue;
+    }
+
+    // Try to find an existing page with the same Name
+    const existing = await notionWithRetry.databases.query({
+      database_id: process.env.NOTION_DATABASE_ID,
+      filter: {
+        property: "Name",
+        title: { equals: searcherTitle },
+      },
+    });
+
+    let parentPage;
+    if (existing.results.length > 0) {
+      // Update existing
+      parentPage = existing.results[0];
+      await notionWithRetry.pages.update({
+        page_id: parentPage.id,
+        properties: {
+          "Form Type": { select: { name: formType } },
+          "SF Referrals": sfReferralsLabel
+            ? { select: { name: sfReferralsLabel } }
+            : undefined,
+          "Searcher Mail": row[38] ? { email: row[38] } : undefined,
+          "Searcher Phone": row[39] ? { phone_number: row[39] } : undefined,
+          "Searcher LinkedIn": row[40] ? { url: row[40] } : undefined,
+          "Searcher Nickname": row[41]
+            ? { rich_text: [{ text: { content: row[41] } }] }
+            : undefined,
+          "Searcher Location": row[42]
+            ? { rich_text: [{ text: { content: row[42] } }] }
+            : undefined,
+          "Searcher CV": row[43]
+            ? {
+                files: [{ name: "CV", external: { url: row[43] } }],
+              }
+            : undefined,
+          "Searcher Availability": mapAvailabilityOption(row[47])
+          ? { select: { name: mapAvailabilityOption(row[47]) } }
+          : undefined,
+          "Form filled out:": row[2]
+            ? { date: { start: new Date(row[2]).toISOString() } }
+            : undefined,
+          "Last Updated": { date: { start: new Date().toISOString() } },
+        },
+      });
+    } else {
+      // Create new
+      parentPage = await notionWithRetry.pages.create({
+        parent: {
+          type: "database_id",
+          database_id: process.env.NOTION_DATABASE_ID,
+        },
+        properties: {
+          Name: { title: [{ text: { content: searcherTitle } }] },
+          "Form Type": { select: { name: formType } },
+          "SF Referrals": sfReferralsLabel
+            ? { select: { name: sfReferralsLabel } }
+            : undefined,
+          "Searcher Mail": row[38] ? { email: row[38] } : undefined,
+          "Searcher Phone": row[39] ? { phone_number: row[39] } : undefined,
+          "Searcher LinkedIn": row[40] ? { url: row[40] } : undefined,
+          "Searcher Nickname": row[41]
+            ? { rich_text: [{ text: { content: row[41] } }] }
+            : undefined,
+          "Searcher Location": row[42]
+            ? { rich_text: [{ text: { content: row[42] } }] }
+            : undefined,
+          "Searcher CV": row[43]
+            ? {
+                files: [{ name: "CV", external: { url: row[43] } }],
+              }
+            : undefined,
+          "Searcher Availability": mapAvailabilityOption(row[47])
+          ? { select: { name: mapAvailabilityOption(row[47]) } }
+          : undefined,
+          "Form filled out:": row[2]
+            ? { date: { start: new Date(row[2]).toISOString() } }
+            : undefined,
+          "Last Updated": { date: { start: new Date().toISOString() } },
+        },
+      });
+    }
+
+    // 🔽 Add this block to archive a stale unmatched page
+    const unmatchedTitle = `⚠️ Unmatched referral for searcher: ${searcherTitle}`;
+    const oldUnmatched = await notionWithRetry.databases.query({
+      database_id: process.env.NOTION_DATABASE_ID,
+      filter: { property: "Name", title: { equals: unmatchedTitle } },
+    });
+    if (oldUnmatched.results.length > 0) {
+      await notionWithRetry.pages.update({
+        page_id: oldUnmatched.results[0].id,
         archived: true,
       });
     }
-  }
 
-  console.log("\ud83c\udf89 All founder pages created successfully.");
+    // 🧹 Purge any existing top-level "Form" / "Team Inputs" toggles to avoid duplicates
+    const topKids = await notionWithRetry.blocks.children.list({ block_id: parentPage.id });
+    for (const b of topKids.results) {
+      if (b.type === "toggle") {
+        const title = b.toggle?.rich_text?.[0]?.text?.content || "";
+        if (title === "Form" || title === "Team Inputs") {
+          await notionWithRetry.blocks.update({ block_id: b.id, archived: true });
+          await sleep(60);
+        }
+      }
+    }
+
+    // 2) Ensure base structure exists (adds "Form" + "Team Inputs")
+    await addStructureBlocks(parentPage.id, formType, row);
+
+    // 3) Locate the "Form" toggle we just created
+    const pageBlocks = await notionWithRetry.blocks.children.list({
+      block_id: parentPage.id,
+    });
+    const formToggle = pageBlocks.results.find(
+      (b) =>
+        b.type === "toggle" &&
+        b.toggle?.rich_text?.[0]?.text?.content === "Form",
+    );
+    const formToggleId = formToggle?.id;
+
+    // 4) Append REFERRAL INSIGHT safely (no deep-nesting in one payload)
+    if (formToggleId && matchedReferrals.length > 0) {
+      // A) Create an empty "REFERRAL INSIGHT" toggle
+      const riRes = await notionWithRetry.blocks.children.append({
+        block_id: formToggleId,
+        children: [
+          {
+            object: "block",
+            type: "toggle",
+            toggle: {
+              rich_text: [{ type: "text", text: { content: "REFERRAL INSIGHT" } }],
+            },
+          },
+        ],
+      });
+      await sleep(120);
+      const riId = riRes.results?.[0]?.id;
+      if (!riId) {
+        console.warn("⚠️ Could not create REFERRAL INSIGHT");
+      } else {
+        // B) Create empty "Referral n" toggles (no children yet)
+        const referralToggles = matchedReferrals.map((_, i) => ({
+          object: "block",
+          type: "toggle",
+          toggle: {
+            rich_text: [{ type: "text", text: { content: `Referral ${i + 1}` } }],
+          },
+        }));
+        await appendChildrenSafe(riId, referralToggles);
+        await sleep(120);
+
+        // C) For each referral toggle: append TABLE first, then Q&A (separate calls)
+        const riChildren = await notionWithRetry.blocks.children.list({ block_id: riId });
+
+        for (let i = 0; i < matchedReferrals.length; i++) {
+          const refRow = matchedReferrals[i];
+          const referralTitle = `Referral ${i + 1}`;
+          const referralBlock = riChildren.results.find(
+            (b) => b.type === "toggle" && b.toggle?.rich_text?.[0]?.text?.content === referralTitle
+          );
+          if (!referralBlock) continue;
+
+          // C1) Table (separate append)
+          await appendChildrenSafe(referralBlock.id, [
+            createTableBlock([
+              ["Searcher Name",        refRow?.[22] || ""],
+              ["Searcher Email",       refRow?.[23] || ""],
+              ["Searcher LinkedIn",    refRow?.[24] || ""],
+              ["Referrer Name",        refRow?.[18] || ""],
+              ["Referrer Email",       refRow?.[19] || ""],
+              ["Referrer Phone",       refRow?.[20] || ""],
+              ["Referrer LinkedIn",    refRow?.[21] || ""],
+              ["Form filled out:",     refRow?.[2]  || ""],
+            ]),
+          ]);
+          await sleep(120);
+
+          // C2) Q&A sections (separate append)
+          const qaChildren = [
+            ...createQAgroup(refRow, [25, 26, 27, 28]),
+            ...createQAgroup(refRow, [29, 30]),
+            ...createQAgroup(refRow, [31, 32, 33]),
+            ...createQAgroup(refRow, [34, 35, 36]),
+          ];
+          await appendChildrenSafe(referralBlock.id, qaChildren);
+          await sleep(120);
+        }
+      }
+    }
+
+    // Make sure we only have one divider on the page and no duplicate toggles
+    await dedupeToggles(parentPage.id, ["Form", "Team Inputs", "Team"]);
+
+    console.log(
+      `✅ Created Searcher page for ${row[37]} with ${searcherRefCount} referrals`,
+    );
+  }
 }
 
-main().catch((e) => {
-  console.error("❌ Script failed:", e);
-});
+  /* ===================== Script Entrypoint ===================== */
+  // ===================== SECTION: Script Entrypoint =====================
+  main()
+    .catch((err) => {
+      console.error("❌ Script failed:", err);
+      process.exit(1);
+    });
