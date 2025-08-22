@@ -182,11 +182,16 @@ async function appendChildrenSafe(block_id, children) {
 
 // --- end retry helpers ---
 function normName(s) {
+  const mapDigits = {
+    "⁰":"0","¹":"1","²":"2","³":"3","⁴":"4","⁵":"5","⁶":"6","⁷":"7","⁸":"8","⁹":"9",
+    "₀":"0","₁":"1","₂":"2","₃":"3","₄":"4","₅":"5","₆":"6","₇":"7","₈":"8","₉":"9",
+  };
   return (s || "")
     .toLowerCase()
     .normalize("NFKD")
+    .replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹₀₁₂₃₄₅₆₇₈₉]/g, ch => mapDigits[ch] || "")
     .replace(/\p{Diacritic}/gu, "")
-    .replace(/[^a-z0-9]+/gi, " ")
+    .replace(/[^a-z0-9]+/g, " ")
     .trim();
 }
 
@@ -709,35 +714,37 @@ async function processUnmatchedSearcherReferrals(searchers, searcherReferrals) {
   // DEBUG: verify Searcher (col 37) ↔ Referral (col 22) joins
   debugSearcherReferralJoin(rows, searchers, searcherReferrals);
 
-  for (const row of referrals) {
-    const name = row[9]?.trim().toLowerCase();
-    if (name) {
-      if (!referralMap[name]) referralMap[name] = [];
-      referralMap[name].push(row);
+    // Build referralMap with a normalized key (coalesces CO₂Zero / CO2Zero / spacing, etc.)
+    for (const row of referrals) {
+      const raw = (row[9] || "").trim();      // human-friendly startup name from the referral row
+      const key = normName(raw);               // ← normalized key: lowercased, diacritics stripped, non-alnum removed
+      if (!key) continue;
+
+      if (!referralMap[key]) {
+        referralMap[key] = { display: raw, rows: [] };  // keep a pretty display name
+      }
+      referralMap[key].rows.push(row);
     }
-  }
 
   // ❗️REMOVE referrals for startups that exist in founder rows
     const matchedStartupNamesRaw = founders
     .map((row) => row[72]?.trim())
     .filter(Boolean);
 
-  const getBestMatch = (targetName, candidates) => {
-    const normalizedTarget = normalizeName(targetName);
-    let bestMatch = null;
-    let bestScore = Infinity;
+    // NOTE: this version expects you already pass IN normalized keys
+    const getBestMatch = (targetKey, candidates) => {
+      let best = null;
+      let bestScore = Infinity;
 
-    for (const candidate of candidates) {
-      const candidateNorm = normalizeName(candidate);
-      const score = distance(normalizedTarget, candidateNorm);
-      if (score < bestScore) {
-        bestScore = score;
-        bestMatch = candidate;
+      for (const c of candidates) {
+        const score = distance(targetKey, c);
+        if (score < bestScore) {
+          bestScore = score;
+          best = c;
+        }
       }
-    }
-
-    return bestScore <= 2 ? bestMatch : null; // ← You can tune this threshold
-  };
+      return bestScore <= 2 ? best : null;  // keep your threshold
+    };
 
   // Remove startups from unmatchedReferrals if they will be matched in the founders loop
   const matchedStartupNames = founders
@@ -746,12 +753,13 @@ async function processUnmatchedSearcherReferrals(searchers, searcherReferrals) {
 
   for (const row of founders) {
     try {
-    const startupName = row[72]?.trim();
-    const normalizedName = startupName?.toLowerCase() || "";
-    const matchedKey =
-      getBestMatch(normalizedName, Object.keys(referralMap)) || "";
-    const referralCount = referralMap[matchedKey]?.length || 0;
-    const matchedReferrals = referralMap[matchedKey] || [];
+      const startupName = row[72]?.trim();                 // your display name (from the sheet)
+      const founderKey  = normName(startupName || "");     // normalized key for matching
+      const matchedKey  = getBestMatch(founderKey, Object.keys(referralMap)) || founderKey;
+      const bundle      = referralMap[matchedKey];         // { display, rows } or undefined
+      const referralCount    = bundle?.rows?.length || 0;
+      const matchedReferrals = bundle?.rows || [];
+      const matchedDisplay   = bundle?.display || startupName;
     const founderForm_filled_out = row[2] || null;
     const founderDeck = row[74]?.trim() || null;
     const founderCount = Number(row[69]) || 1;
@@ -830,12 +838,10 @@ async function processUnmatchedSearcherReferrals(searchers, searcherReferrals) {
       ? row[104].split(",").map((s) => s.trim())
       : [];
 
-    // Try to find an existing page
-    const existing = existingPages.find(
-      (p) =>
-        p.properties?.Name?.title?.[0]?.text?.content?.toLowerCase() ===
-        normalizedName,
-    );
+      // Try to find an existing page
+      const existing = existingPages.find((p) =>
+        normName(p?.properties?.Name?.title?.[0]?.text?.content || "") === founderKey
+      );
 
     let parentPage;
 
@@ -1821,13 +1827,12 @@ async function processUnmatchedSearcherReferrals(searchers, searcherReferrals) {
 
     console.log(`\u2705 Page complete for ${startupName}`);
     // Cleanup referralMap so they won't appear again
-    delete referralMap[matchedKey];
-    // Delete unmatched referral page if now matched
-    const unmatchedPageTitle = `⚠️ Unmatched referral for startup: ${matchedKey}`;
-    const previouslyUnmatched = existingPages.find(
-      (p) =>
-        p.properties?.Name?.title?.[0]?.text?.content === unmatchedPageTitle,
-    );
+      delete referralMap[matchedKey];
+
+      const unmatchedPageTitle = `⚠️ Unmatched referral for startup: ${matchedDisplay}`;
+      const previouslyUnmatched = existingPages.find(
+        (p) => p.properties?.Name?.title?.[0]?.text?.content === unmatchedPageTitle
+      );
       if (previouslyUnmatched) {
         console.log(
           `🗑 Deleting unmatched page now that ${startupName} has been matched`,
@@ -1847,11 +1852,16 @@ async function processUnmatchedSearcherReferrals(searchers, searcherReferrals) {
   }
 
     // --- BEGIN: Create/Update UNMATCHED STARTUP referral pages ---
-    for (const [startupKey, referralRows] of Object.entries(referralMap)) {
+    for (const [key, bundle] of Object.entries(referralMap)) {
+      const referralRows = bundle?.rows || [];
+      if (referralRows.length === 0) continue;
+
+      // human-friendly name we kept when building referralMap
+      const displayName = bundle.display || referralRows[0]?.[9] || key;
       if (!referralRows || referralRows.length === 0) continue;
 
-      const pageTitle = `⚠️ Unmatched referral for startup: ${startupKey}`;
-      console.log(`🧾 Creating/Updating unmatched startup referral page for: ${startupKey}  (rows: ${referralRows.length})`);
+      const pageTitle = `⚠️ Unmatched referral for startup: ${displayName}`;
+      console.log(`🧾 Creating/Updating unmatched startup referral page for: ${displayName}  (rows: ${referralRows.length})`);
 
       // Upsert page
       const existing = await notionWithRetry.databases.query({
@@ -1865,25 +1875,25 @@ async function processUnmatchedSearcherReferrals(searchers, searcherReferrals) {
         await notionWithRetry.pages.update({
           page_id: page.id,
           properties: {
-            "SF Referrals": { select: { name: "⚠️ Unmatched Referral" } },
+            Status: { select: { name: "⚠️ Unmatched Referral" } },
             "Last Updated": { date: { start: new Date().toISOString() } },
           },
         });
-        console.log(`🔁 Updated unmatched startup page: ${startupKey}`);
+        console.log(`🔁 Updated unmatched startup page: ${displayName}`);
       } else {
         const firstTimestamp = referralRows[0]?.[2] || null;
         page = await notionWithRetry.pages.create({
           parent: { type: "database_id", database_id: process.env.NOTION_DATABASE_ID },
           properties: {
             Name: { title: [{ text: { content: pageTitle } }] },
-            "SF Referrals": { select: { name: "⚠️ Unmatched Referral" } },
+            Status: { select: { name: "⚠️ Unmatched Referral" } },
             ...(firstTimestamp && !Number.isNaN(Date.parse(firstTimestamp))
               ? { "Form filled out:": { date: { start: new Date(firstTimestamp).toISOString() } } }
               : {}),
             "Last Updated": { date: { start: new Date().toISOString() } },
           },
         });
-        console.log(`🆕 Created unmatched startup page: ${startupKey}`);
+        console.log(`🔁 Updated unmatched startup page: ${displayName}`);
       }
 
       // Ensure single REFERRAL INSIGHT toggle
@@ -1939,7 +1949,7 @@ async function processUnmatchedSearcherReferrals(searchers, searcherReferrals) {
         // If you have founder-referral Q&A columns, you can add appendQuestionGroup(...) here similarly.
       }
 
-      console.log(`✅ Unmatched startup page complete: ${startupKey}`);
+      console.log(`✅ Unmatched startup page complete: ${displayName}`);
     }
     // --- END: Unmatched STARTUP referral pages ---
     console.log("🎉 All founder pages created successfully.");
