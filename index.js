@@ -53,32 +53,34 @@ const allQuestions = [
   "Was there ever a high-stakes meeting or moment where @Entrepreneur’s contact info had to assert a new direction or call for a change in plans? How did they carry the room, and how did others respond?",
   "Can you share an instance where @Entrepreneur’s contact info helped stakeholders or team members realign after a conflict? What actions did they take to rebuild trust?",
 
-  // 37–43 → Searcher Inputs (title + properties)
+  // 37–44 → Searcher Inputs (title + properties)
   "Searcher Name", // 37
   "Searcher Email", // 38
   "Searcher Phone", // 39
   "Searcher LinkedIn", // 40
   "Searcher Nickname", // 41
-  "Searcher Location", // 42
-  "Searcher CV", // 43
-  // 44–45 → Searcher BASICS
+  "Searcher v Intern", //42
+  "Searcher Location", // 43
+  "Searcher CV", // 44
+  
+  // 45–46 → Searcher BASICS
   "Are you a previous founder/entrepreneur?",
   "If yes,  tell us more.",
-  // 46–47: NEW training & availability
+  // 47–48: NEW training & availability
   "To be able to well understand and support our searchers we intend all searchers to go through a six month training program. From when could you start dedicating ~3 hours per day to this program?",
   "Our cohorts of 5 choose a daily touchpoint time together. What time windows work best for you? (Morning, Early afternoon, Late afternoon, Evening, Late evening, I’m flexible / decide with the group)",
-  // 48–51 → Searcher Problem Solving
+  // 49–52 → Searcher Problem Solving
   "Think of a time when you had two or more urgent deadlines collide. What was at stake, how did you decide what to handle first, and how did you communicate that decision to others?",
   "Describe a situation where a project led by you started going off-track. How did you step in, and what actions did you take to regain control?",
   "Was there a moment when you were responsible for solving a problem that no one else seemed to know how to tackle? What did you do first, and how did you structure your approach?",
   "Tell us about a time when you had to make a decision under intense time pressure and without full information. What was the impact of that decision, and how did you justify it at the time?",
-  // 52–56 → Searcher AI Leverage
+  // 53–57 → Searcher AI Leverage
   "What added value do you believe AI tools bring to a business?",
   "Can you describe a specific project where you used an AI tool to produce a first draft, prototype, or concept much faster than expected? Which tool did you use, and what difference did it make?",
   "What AI tool are you currently passionate about? What is it, and what problem is it trying to solve?",
   "Think of your most “clever” use of AI to date. What was the context, what did you build or automate, and why was it impressive?",
   "We're looking for your high-level strategic thinking. Beyond just using tools, what are the first three actionable steps you would take to fundamentally transform a company and make it resilient in the face of future AGI advancements? Describe the actions and the rationale behind your choices.",
-  // 57–64 → Searcher Moonstone DNA
+  // 58–65 → Searcher Moonstone DNA
   "Tell me about a time when you had to challenge a teammate, partner, or client on a sensitive issue. Walk me through your approach, and what was the outcome?",
   "Describe a situation where team morale was low or trust was strained—and you played a role in shifting the dynamic. What exactly did you do?",
   "Was there ever a high-stakes meeting or moment where you had to assert a new direction or call for a change in plans? How did you make that decision, how did you communicate it to the room, and how did others respond?",
@@ -178,6 +180,13 @@ async function appendChildrenSafe(block_id, children) {
   const clean = (children || []).filter(Boolean);
   if (clean.length === 0) return { results: [] }; // nothing to append
   return await notionWithRetry.blocks.children.append({ block_id, children: clean });
+}
+
+function coerceInternSearcher(val) {
+  const s = String(val || "").trim().toLowerCase();
+  if (s === "intern") return "Intern";
+  if (s === "searcher") return "Searcher";
+  return undefined; // leave property untouched if cell is empty or unexpected
 }
 
 // --- end retry helpers ---
@@ -359,7 +368,7 @@ const validFundingStages = [
   "> Series D",
 ];
 
-// Map the sheet answer (col 47) to your Notion Select options
+// Map the sheet answer (col 48) to your Notion Select options
 function mapAvailabilityOption(raw) {
   if (!raw) return undefined;
   const s = String(raw).toLowerCase();
@@ -728,7 +737,7 @@ async function processUnmatchedSearcherReferrals(searchers, searcherReferrals) {
 
   // ❗️REMOVE referrals for startups that exist in founder rows
     const matchedStartupNamesRaw = founders
-    .map((row) => row[72]?.trim())
+    .map((row) => row[73]?.trim())
     .filter(Boolean);
 
     // NOTE: this version expects you already pass IN normalized keys
@@ -748,12 +757,12 @@ async function processUnmatchedSearcherReferrals(searchers, searcherReferrals) {
 
   // Remove startups from unmatchedReferrals if they will be matched in the founders loop
   const matchedStartupNames = founders
-    .map((row) => row[72]?.trim().toLowerCase())
+    .map((row) => row[73]?.trim().toLowerCase())
     .filter((name) => name); // remove undefined/null
 
   for (const row of founders) {
     try {
-      const startupName = row[72]?.trim();                 // your display name (from the sheet)
+      const startupName = row[73]?.trim();                 // your display name (from the sheet)
       const founderKey  = normName(startupName || "");     // normalized key for matching
       const matchedKey  = getBestMatch(founderKey, Object.keys(referralMap)) || founderKey;
       const bundle      = referralMap[matchedKey];         // { display, rows } or undefined
@@ -761,8 +770,8 @@ async function processUnmatchedSearcherReferrals(searchers, searcherReferrals) {
       const matchedReferrals = bundle?.rows || [];
       const matchedDisplay   = bundle?.display || startupName;
     const founderForm_filled_out = row[2] || null;
-    const founderDeck = row[74]?.trim() || null;
-    const founderCount = Number(row[69]) || 1;
+    const founderDeck = row[75]?.trim() || null;
+    const founderCount = Number(row[70]) || 1;
 
     // 🌟 Detect Form Type from column 3
     const formIntent = row[3]?.trim();
@@ -824,9 +833,9 @@ async function processUnmatchedSearcherReferrals(searchers, searcherReferrals) {
     let allRelevantIndices = [...Array(50)].map((_, i) => 66 + i);
 
     // Team members: number from col 115; each member adds 11 cols starting at 116
-    const numTeamMembers = Number(row[117]) || 0;
+    const numTeamMembers = Number(row[118]) || 0;
     for (let i = 0; i < numTeamMembers; i++) {
-      const startIndex = 118 + i * 11;
+      const startIndex = 119 + i * 11;
       allRelevantIndices.push(...Array.from({ length: 11 }, (_, j) => startIndex + j));
     }
 
@@ -834,7 +843,7 @@ async function processUnmatchedSearcherReferrals(searchers, searcherReferrals) {
     const totalCount = allRelevantIndices.length;
     const completionPercent =
       totalCount === 0 ? 0 : Math.round((answeredCount / totalCount) * 100);
-    const priorityRanking = row[104]
+    const priorityRanking = row[105]
       ? row[104].split(",").map((s) => s.trim())
       : [];
 
@@ -899,18 +908,18 @@ async function processUnmatchedSearcherReferrals(searchers, searcherReferrals) {
           "Searcher Nickname": row[41]
             ? { rich_text: [{ text: { content: row[41] } }] }
             : undefined,
-          "Searcher Location": row[42]
-            ? { rich_text: [{ text: { content: row[42] } }] }
+          "Searcher Location": row[43]
+            ? { rich_text: [{ text: { content: row[43] } }] }
             : undefined,
-          "Searcher Availability": mapAvailabilityOption(row[47])
-          ? { select: { name: mapAvailabilityOption(row[47]) } }
+          "Searcher Availability": mapAvailabilityOption(row[48])
+          ? { select: { name: mapAvailabilityOption(row[48]) } }
           : undefined,
-          "Searcher CV": row[43]
+          "Searcher CV": row[44]
             ? {
                 files: [
                   {
                     name: "CV",
-                    external: { url: row[43] },
+                    external: { url: row[44] },
                   },
                 ],
               }
@@ -937,14 +946,14 @@ async function processUnmatchedSearcherReferrals(searchers, searcherReferrals) {
             rich_text: [
               {
                 type: "text",
-                text: { content: row[68] || "No founder name provided" },
+                text: { content: row[69] || "No founder name provided" },
               },
             ],
           },
-          "Company Website": { url: row[72] || null },
-          "Founder Email": { email: row[69] || null },
-          "Founder LinkedIn": { url: row[71] || null },
-          "Founder Phone Number": { phone_number: row[70] || null },
+          "Company Website": { url: row[73] || null },
+          "Founder Email": { email: row[70] || null },
+          "Founder LinkedIn": { url: row[72] || null },
+          "Founder Phone Number": { phone_number: row[71] || null },
           Status:
             referralCount === 0
               ? undefined
@@ -964,22 +973,22 @@ async function processUnmatchedSearcherReferrals(searchers, searcherReferrals) {
                 },
           Founders: { number: founderCount },
           "Business Model": {
-            multi_select: row[75]
-              ? row[75].split(",").map((s) => ({ name: s.trim() }))
+            multi_select: row[76]
+              ? row[76].split(",").map((s) => ({ name: s.trim() }))
               : [],
           },
-          "Where is the company based?": validLocations.includes(row[77])
-            ? { select: { name: row[77] } }
+          "Where is the company based?": validLocations.includes(row[78])
+            ? { select: { name: row[78] } }
             : undefined,
 
-          "What is your current valuation?": validValuations.includes(row[101])
-            ? { select: { name: row[101] } }
+          "What is your current valuation?": validValuations.includes(row[102])
+            ? { select: { name: row[102] } }
             : undefined,
 
           "What next stage is this round funding?": validFundingStages.includes(
-            row[102],
+            row[103],
           )
-            ? { select: { name: row[102] } }
+            ? { select: { name: row[103] } }
             : undefined,
 
           "1. Priority (18 months)": priorityRanking[0]
@@ -1006,7 +1015,7 @@ async function processUnmatchedSearcherReferrals(searchers, searcherReferrals) {
             ? { select: { name: priorityRanking[5] } }
             : undefined,
 
-          "Founded in": { number: Number(row[76]) || null },
+          "Founded in": { number: Number(row[77]) || null },
 
           "Completion %": { number: completionPercent },
           "Form filled out:": founderForm_filled_out
@@ -1409,7 +1418,7 @@ async function processUnmatchedSearcherReferrals(searchers, searcherReferrals) {
         "What is @About your startup's Unique Selling Proposition?",
         "Who are @About your startup's competitors? What do you understand about your business that they don't?",
       ];
-      const answers = [78, 79, 80, 81, 82, 83].map((i) => row[i]);
+      const answers = [79, 80, 81, 82, 83, 84].map((i) => row[i]);
 
       const unique = new Set();
       for (const block of basicsChildren.results) {
@@ -1425,7 +1434,7 @@ async function processUnmatchedSearcherReferrals(searchers, searcherReferrals) {
 
       await updateMultipleQuotes(basicsToggle.id, titles, answers);
 
-      const patent = row[84]?.trim().toLowerCase() === "yes";
+      const patent = row[85]?.trim().toLowerCase() === "yes";
       const patentExists = basicsChildren.results?.some(
         (b) =>
           b.type === "to_do" &&
@@ -1463,7 +1472,7 @@ async function processUnmatchedSearcherReferrals(searchers, searcherReferrals) {
         "How much revenue has @About your startup generated in the last 12 months?",
         "How much revenue can @About your startup generate in the next 12 months?",
       ];
-      const financialAnswers = [86, 87, 94, 95, 96].map((i) => row[i]);
+      const financialAnswers = [87, 88, 95, 96, 97].map((i) => row[i]);
 
       const existingFinancialChildren = await notionWithRetry.blocks.children.list({ block_id: financialsToggle.id });
 
@@ -1525,7 +1534,7 @@ async function processUnmatchedSearcherReferrals(searchers, searcherReferrals) {
               table_width: 2,
               has_column_header: false,
               has_row_header: false,
-              children: [90, 91, 92, 93, 94, 95].map((i, idx) => ({
+              children: [91, 92, 93, 94, 95, 96].map((i, idx) => ({
                 object: "block",
                 type: "table_row",
                 table_row: {
@@ -1552,7 +1561,7 @@ async function processUnmatchedSearcherReferrals(searchers, searcherReferrals) {
         "What has been the hardest challenge related to people's management?",
         "What is your funding need? Why are you looking for capital?",
       ];
-      const challengeAnswers = [97, 98, 99, 100, 102].map((i) => row[i]); // ⚠️ Includes index 50 for funding need
+      const challengeAnswers = [98, 99, 100, 101, 103].map((i) => row[i]); // ⚠️ Includes index 51 for funding need
 
       const challengeChildren = await notionWithRetry.blocks.children.list({
         block_id: challengeToggle.id,
@@ -1591,7 +1600,7 @@ async function processUnmatchedSearcherReferrals(searchers, searcherReferrals) {
         "Why them, how much would you like to pay them and why would they accept or not accept?",
         "When do you believe that they'll actually join your team?",
       ];
-      const hrAnswers = [105, 106, 107, 108, 109, 110, 111].map((i) => row[i]);
+      const hrAnswers = [106, 107, 108, 109, 110, 111, 112].map((i) => row[i]);
 
       const hrChildren = await notionWithRetry.blocks.children.list({
         block_id: hrToggle.id,
@@ -1624,7 +1633,7 @@ async function processUnmatchedSearcherReferrals(searchers, searcherReferrals) {
         "What is the timeline you envision for Moonstone's eventual exit from @About your startup?",
         "Give us more context — what year will it be, what milestones will you have reached, and what valuation will the market be willing to pay to acquire @About your Startup?",
       ];
-      const exitAnswers = [112, 113, 114, 115, 116].map((i) => row[i]);
+      const exitAnswers = [113, 114, 115, 116, 117].map((i) => row[i]);
 
       const exitChildren = await notionWithRetry.blocks.children.list({
         block_id: exitToggle.id,
@@ -1655,16 +1664,16 @@ async function processUnmatchedSearcherReferrals(searchers, searcherReferrals) {
       });
 
       const tableIndices = [
-        [132, 133, 134, 135, 136],
-        [143, 144, 145, 146, 147],
-        [154, 155, 156, 157, 158],
-        [165, 166, 167, 168, 169],
+        [133, 134, 135, 136, 137],
+        [144, 145, 146, 147, 148],
+        [155, 156, 157, 158, 159],
+        [166, 167, 168, 169, 170],
       ];
       const qaIndices = [
-        [137, 138, 139, 140, 141, 142],
-        [148, 149, 150, 151, 152, 153],
-        [159, 160, 161, 162, 163, 164],
-        [170, 171, 172, 173, 174, 175],
+        [138, 139, 140, 141, 142, 143],
+        [149, 150, 151, 152, 153, 154],
+        [160, 161, 162, 163, 164, 165],
+        [171, 172, 173, 174, 175, 176],
       ];
       const qaTitles = [
         "Tell us what @Contact info would never say about themselves",
@@ -1736,7 +1745,7 @@ async function processUnmatchedSearcherReferrals(searchers, searcherReferrals) {
 
         const qAnswers =
           i === 0
-            ? Array.from({ length: 14 }, (_, j) => row[123 + j])
+            ? Array.from({ length: 14 }, (_, j) => row[124 + j])
             : qaIndices[i - 1].map((idx) => row[idx] || "");
 
         const quoteBlocks = [];
@@ -1843,7 +1852,7 @@ async function processUnmatchedSearcherReferrals(searchers, searcherReferrals) {
         });
       }
       } catch (err) {
-      const startupName = (row?.[72] || "Unknown");
+      const startupName = (row?.[73] || "Unknown");
       console.error(
         `⚠️ Skipping founder '${startupName}' due to:`,
         err?.code || err?.message || err
@@ -2123,25 +2132,25 @@ async function addSearcherBlocks(pageId, row, searcherReferrals) {
   await appendQuestionGroup(
     notionWithRetry, formToggleId, row,
     "BASICS",
-    [44, 45, 46, 47]
+    [45, 46, 47, 48]
   );
 
   await appendQuestionGroup(
     notionWithRetry, formToggleId, row,
     "YOUR MIND: PROBLEM SOLVING, PRIORITIZATION & PRESSURE",
-    [48, 49, 50, 51]
+    [49, 50, 51, 52]
   );
 
   await appendQuestionGroup(
     notionWithRetry, formToggleId, row,
     "AI LEVERAGE IN ACTION: PREPARING FOR THE AGI ECONOMY",
-    [52, 53, 54, 55, 56]
+    [53, 54, 55, 56, 57]
   );
 
   await appendQuestionGroup(
     notionWithRetry, formToggleId, row,
     "THE MOONSTONE DNA: TRUST, CONFLICT, STRATEGIC LEADERSHIP, NETWORK",
-    [57, 58, 59, 60, 61, 62, 63, 64]
+    [58, 59, 60, 61, 62, 63, 64, 65]
   );
 
   await sleep(120);
@@ -2333,6 +2342,9 @@ async function handleSearcherPages(searchers, searcherReferrals, notion) {
         page_id: parentPage.id,
         properties: {
           "Form Type": { select: { name: formType } },
+          "Intern v Searcher": formType === "Searcher" && coerceInternSearcher(row[42])
+          ? { select: { name: coerceInternSearcher(row[42]) } }
+          : undefined,
           "SF Referrals": sfReferralsLabel
             ? { select: { name: sfReferralsLabel } }
             : undefined,
@@ -2342,16 +2354,16 @@ async function handleSearcherPages(searchers, searcherReferrals, notion) {
           "Searcher Nickname": row[41]
             ? { rich_text: [{ text: { content: row[41] } }] }
             : undefined,
-          "Searcher Location": row[42]
-            ? { rich_text: [{ text: { content: row[42] } }] }
+          "Searcher Location": row[43]
+            ? { rich_text: [{ text: { content: row[43] } }] }
             : undefined,
-          "Searcher CV": row[43]
+          "Searcher CV": row[44]
             ? {
-                files: [{ name: "CV", external: { url: row[43] } }],
+                files: [{ name: "CV", external: { url: row[44] } }],
               }
             : undefined,
-          "Searcher Availability": mapAvailabilityOption(row[47])
-          ? { select: { name: mapAvailabilityOption(row[47]) } }
+          "Searcher Availability": mapAvailabilityOption(row[48])
+          ? { select: { name: mapAvailabilityOption(row[48]) } }
           : undefined,
           "Form filled out:": row[2]
             ? { date: { start: new Date(row[2]).toISOString() } }
@@ -2369,6 +2381,9 @@ async function handleSearcherPages(searchers, searcherReferrals, notion) {
         properties: {
           Name: { title: [{ text: { content: searcherTitle } }] },
           "Form Type": { select: { name: formType } },
+          "Intern v Searcher": formType === "Searcher" && coerceInternSearcher(row[42])
+          ? { select: { name: coerceInternSearcher(row[42]) } }
+          : undefined,
           "SF Referrals": sfReferralsLabel
             ? { select: { name: sfReferralsLabel } }
             : undefined,
@@ -2378,16 +2393,16 @@ async function handleSearcherPages(searchers, searcherReferrals, notion) {
           "Searcher Nickname": row[41]
             ? { rich_text: [{ text: { content: row[41] } }] }
             : undefined,
-          "Searcher Location": row[42]
-            ? { rich_text: [{ text: { content: row[42] } }] }
+          "Searcher Location": row[43]
+            ? { rich_text: [{ text: { content: row[43] } }] }
             : undefined,
-          "Searcher CV": row[43]
+          "Searcher CV": row[44]
             ? {
-                files: [{ name: "CV", external: { url: row[43] } }],
+                files: [{ name: "CV", external: { url: row[44] } }],
               }
             : undefined,
-          "Searcher Availability": mapAvailabilityOption(row[47])
-          ? { select: { name: mapAvailabilityOption(row[47]) } }
+          "Searcher Availability": mapAvailabilityOption(row[48])
+          ? { select: { name: mapAvailabilityOption(row[48]) } }
           : undefined,
           "Form filled out:": row[2]
             ? { date: { start: new Date(row[2]).toISOString() } }
@@ -2441,28 +2456,28 @@ async function handleSearcherPages(searchers, searcherReferrals, notion) {
       // 44–45 BASICS
       await appendQuestionGroup(
         notionWithRetry, formToggleId, row,
-        "BASICS", [44, 45]
+        "BASICS", [45, 46]
       );
 
-      // 46–49 YOUR MIND
+      // 47–50 YOUR MIND
       await appendQuestionGroup(
         notionWithRetry, formToggleId, row,
         "YOUR MIND: PROBLEM SOLVING, PRIORITIZATION & PRESSURE",
-        [46, 47, 48, 49]
+        [47, 48, 49, 50]
       );
 
-      // 50–54 AI LEVERAGE
+      // 51–55 AI LEVERAGE
       await appendQuestionGroup(
         notionWithRetry, formToggleId, row,
         "AI LEVERAGE IN ACTION: PREPARING FOR THE AGI ECONOMY",
-        [50, 51, 52, 53, 54]
+        [51, 52, 53, 54, 55]
       );
 
-      // 55–62 MOONSTONE DNA
+      // 56–63 MOONSTONE DNA
       await appendQuestionGroup(
         notionWithRetry, formToggleId, row,
         "THE MOONSTONE DNA: TRUST, CONFLICT, STRATEGIC LEADERSHIP, NETWORK",
-        [55, 56, 57, 58, 59, 60, 61, 62]
+        [56, 57, 58, 59, 60, 61, 62, 63]
       );
     }
 
