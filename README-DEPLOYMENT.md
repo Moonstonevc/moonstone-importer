@@ -1,130 +1,295 @@
-# 🚀 Deployment Guide - Moonstone Importer
+# Moonstone Importer - Deployment Guide
 
-This guide explains how to set up automated scheduling for the Moonstone Importer script to run **twice daily** using **GitHub Actions** (completely free).
+## 🚀 GitHub Actions Deployment (TypeScript)
+
+This guide shows how to deploy the **TypeScript** version of Moonstone Importer using GitHub Actions for automated execution.
 
 ## 📋 Prerequisites
 
-1. GitHub account (free)
-2. Your project pushed to a GitHub repository
-3. Environment variables from your current setup
+- GitHub repository with the Moonstone Importer code
+- Valid API credentials for Notion and Google Sheets
+- Basic understanding of GitHub Actions
 
-## 🔧 Setup Instructions
+## 🔧 Setup GitHub Secrets
 
-### 1. Push to GitHub Repository
+### Required Secrets
 
-If not already done, create a new repository on GitHub and push your code:
+Add these secrets in your GitHub repository settings (`Settings > Secrets and variables > Actions`):
+
+| Secret Name                | Description                                 | Example                                        |
+| -------------------------- | ------------------------------------------- | ---------------------------------------------- |
+| `NOTION_API_KEY`           | Your Notion integration token               | `secret_abc123...`                             |
+| `NOTION_DATABASE_ID`       | The ID of your Notion database              | `a1b2c3d4-e5f6-7g8h-9i0j-k1l2m3n4o5p6`         |
+| `GOOGLE_SHEET_ID`          | The ID from your Google Sheets URL          | `1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms` |
+| `GAPI_SERVICE_ACCOUNT_KEY` | JSON credentials for Google service account | `{"type":"service_account",...}`               |
+
+### How to Add Secrets
+
+1. Go to your repository on GitHub
+2. Click `Settings` tab
+3. Navigate to `Secrets and variables > Actions`
+4. Click `New repository secret`
+5. Add each secret with the exact name and value
+
+## 📝 GitHub Actions Workflow
+
+### Minimal Workflow
+
+Create `.github/workflows/moonstone-importer.yml`:
+
+```yaml
+name: Moonstone Importer
+
+on:
+  # Manual trigger
+  workflow_dispatch:
+
+  # Scheduled execution (daily at 9 AM UTC)
+  schedule:
+    - cron: "0 9 * * *"
+
+  # Trigger on push to main branch
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "package.json"
+      - "tsconfig.json"
+
+jobs:
+  import:
+    name: Import Form Data
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check TypeScript
+        run: npm run type-check
+
+      - name: Build TypeScript
+        run: npm run build
+
+      - name: Run Moonstone Importer
+        run: npm start
+        env:
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
+          GAPI_SERVICE_ACCOUNT_KEY: ${{ secrets.GAPI_SERVICE_ACCOUNT_KEY }}
+          NODE_ENV: production
+```
+
+### Advanced Workflow with Error Handling
+
+Create `.github/workflows/moonstone-importer-advanced.yml`:
+
+```yaml
+name: Moonstone Importer (Advanced)
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Run in dry-run mode (no actual changes)"
+        required: false
+        default: false
+        type: boolean
+
+  schedule:
+    - cron: "0 9 * * *" # Daily at 9 AM UTC
+
+jobs:
+  import:
+    name: Import Form Data
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate TypeScript
+        run: |
+          echo "🔍 Checking TypeScript types..."
+          npm run type-check
+          echo "✅ TypeScript validation passed"
+
+      - name: Build application
+        run: |
+          echo "🏗️ Building TypeScript application..."
+          npm run build
+          echo "✅ Build completed successfully"
+
+      - name: Run import process
+        id: import
+        run: |
+          echo "🚀 Starting Moonstone Importer..."
+          npm start
+          echo "✅ Import process completed"
+        env:
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
+          GAPI_SERVICE_ACCOUNT_KEY: ${{ secrets.GAPI_SERVICE_ACCOUNT_KEY }}
+          NODE_ENV: production
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
+
+      - name: Handle success
+        if: success()
+        run: |
+          echo "🎉 Moonstone Importer completed successfully!"
+          echo "Check the logs above for detailed results."
+
+      - name: Handle failure
+        if: failure()
+        run: |
+          echo "❌ Moonstone Importer failed!"
+          echo "Please check the logs above for error details."
+          echo "Common issues:"
+          echo "- Invalid API credentials"
+          echo "- Network connectivity problems"
+          echo "- TypeScript compilation errors"
+          exit 1
+```
+
+## 🕐 Scheduling Options
+
+### Common Cron Schedules
+
+```yaml
+# Daily at 9 AM UTC
+- cron: "0 9 * * *"
+
+# Every Monday at 8 AM UTC
+- cron: "0 8 * * 1"
+
+# Twice daily (9 AM and 6 PM UTC)
+- cron: "0 9,18 * * *"
+
+# Every hour during business hours (9 AM - 6 PM UTC, Mon-Fri)
+- cron: "0 9-18 * * 1-5"
+
+# First day of every month at 9 AM UTC
+- cron: "0 9 1 * *"
+```
+
+## 🔍 Monitoring and Debugging
+
+### Viewing Workflow Results
+
+1. Go to your repository on GitHub
+2. Click the `Actions` tab
+3. Select the workflow run to view logs
+4. Check each step for success/failure status
+
+### Common Issues and Solutions
+
+#### ❌ "Missing required environment variables"
+
+**Solution**: Verify all GitHub secrets are correctly set:
 
 ```bash
-git init
-git add .
-git commit -m "Initial commit - Moonstone Importer"
-git branch -M main
-git remote add origin https://github.com/YOUR_USERNAME/moonstone-importer.git
-git push -u origin main
+# Check secret names match exactly:
+NOTION_API_KEY
+NOTION_DATABASE_ID
+GOOGLE_SHEET_ID
+GAPI_SERVICE_ACCOUNT_KEY
 ```
 
-### 2. Configure Environment Variables (GitHub Secrets)
+#### ❌ "TypeScript compilation failed"
 
-Go to your GitHub repository → Settings → Secrets and variables → Actions → New repository secret
+**Solution**: Check the TypeScript code for errors:
 
-Add these four secrets:
+- Review the build logs in GitHub Actions
+- Run `npm run type-check` locally to identify issues
+- Ensure all dependencies are properly installed
 
-- `NOTION_API_KEY` - Your Notion integration API key
-- `GAPI_SERVICE_ACCOUNT_KEY` - Your Google Service Account JSON (entire JSON as string)
-- `GOOGLE_SHEET_ID` - Your Google Sheets ID
-- `NOTION_DATABASE_ID` - Your Notion database ID
+#### ❌ "Google Sheets read failed"
 
-### 3. Enable GitHub Actions
+**Solution**: Verify Google service account setup:
 
-The workflow file `.github/workflows/scheduled-import.yml` is already created and will:
+- Check that `GAPI_SERVICE_ACCOUNT_KEY` contains valid JSON
+- Ensure the service account has access to the spreadsheet
+- Verify the `GOOGLE_SHEET_ID` is correct
 
-- ✅ Run **twice daily** at 8:00 AM and 8:00 PM UTC
-- ✅ Install dependencies automatically
-- ✅ Handle the 10-minute runtime with 15-minute timeout
-- ✅ Upload logs if something fails
-- ✅ Allow manual triggering for testing
+#### ❌ "Notion operation failed"
 
-### 4. Test the Setup
+**Solution**: Check Notion integration:
 
-1. Go to your repository → Actions tab
-2. Click "Moonstone Importer - Scheduled Run"
-3. Click "Run workflow" to test manually
-4. Monitor the run to ensure everything works
+- Verify `NOTION_API_KEY` is valid and not expired
+- Ensure the integration has access to the database
+- Check that `NOTION_DATABASE_ID` is correct
 
-## ⏰ Scheduling Details
+### Debugging Tips
 
-**Current Schedule:**
-- **8:00 AM UTC** (adjust for your timezone)
-- **8:00 PM UTC** (adjust for your timezone)
+1. **Enable detailed logging** by setting `NODE_ENV=development`
+2. **Use manual triggers** to test changes before scheduling
+3. **Check API rate limits** if processing large datasets
+4. **Monitor execution time** and adjust timeout if needed
 
-**To change the schedule**, edit `.github/workflows/scheduled-import.yml`:
-```yaml
-schedule:
-  - cron: '0 8 * * *'   # 8:00 AM UTC
-  - cron: '0 20 * * *'  # 8:00 PM UTC
-```
+## 🚨 Security Best Practices
 
-**Cron Format Examples:**
-- `'0 6 * * *'` - 6:00 AM UTC
-- `'30 14 * * *'` - 2:30 PM UTC
-- `'0 */12 * * *'` - Every 12 hours
-- `'0 9,21 * * *'` - 9:00 AM and 9:00 PM UTC
+### Secrets Management
 
-## 🌍 Timezone Considerations
+- ✅ **Never commit secrets** to your repository
+- ✅ **Use GitHub Secrets** for all sensitive data
+- ✅ **Rotate credentials regularly**
+- ✅ **Limit service account permissions** to minimum required
 
-GitHub Actions runs in UTC. To convert to your local time:
+### Access Control
 
-- **Italy (CET/CEST)**: UTC+1/UTC+2
-  - For 9:00 AM Italy time: use `'0 7 * * *'` (winter) or `'0 8 * * *'` (summer)
-- **New York (EST/EDT)**: UTC-5/UTC-4
-  - For 9:00 AM NY time: use `'0 14 * * *'` (winter) or `'0 13 * * *'` (summer)
+- ✅ **Restrict repository access** to authorized users only
+- ✅ **Review workflow changes** before merging to main
+- ✅ **Monitor workflow execution** for unexpected behavior
+- ✅ **Use branch protection rules** for production workflows
 
-## 💰 Cost Analysis - FREE!
+## 📊 Production Deployment Checklist
 
-**GitHub Actions Free Tier:**
-- ✅ **2,000 minutes/month** for private repos
-- ✅ **Unlimited** for public repos
-- ✅ Your script (10 min × 2 runs × 30 days) = **600 minutes/month**
-- ✅ **Well within the free limit!**
+### Before First Deployment
 
-## 🔍 Monitoring
+- [ ] All GitHub secrets are configured correctly
+- [ ] TypeScript compiles without errors (`npm run type-check`)
+- [ ] Application builds successfully (`npm run build`)
+- [ ] Test run completed successfully locally (`npm run dev`)
+- [ ] Google service account has spreadsheet access
+- [ ] Notion integration has database access
+- [ ] Workflow file is in `.github/workflows/` directory
 
-**Check runs:**
-1. Go to repository → Actions tab
-2. View recent workflow runs
-3. Click on any run to see detailed logs
+### Regular Maintenance
 
-**Notifications:**
-- GitHub will email you if a workflow fails
-- You can configure Slack/Discord notifications if needed
+- [ ] Monitor workflow execution results
+- [ ] Review import statistics for anomalies
+- [ ] Update dependencies regularly (`npm update`)
+- [ ] Rotate API credentials periodically
+- [ ] Backup Notion database before major changes
 
-## 🚨 Troubleshooting
+## 🎯 Next Steps
 
-**Common Issues:**
+1. **Set up the workflow** using one of the templates above
+2. **Configure GitHub secrets** with your API credentials
+3. **Test manually** using the workflow dispatch trigger
+4. **Monitor results** and adjust schedule as needed
+5. **Set up notifications** for workflow failures (optional)
 
-1. **Environment variables not set**: Check GitHub repository secrets
-2. **Workflow doesn't trigger**: Ensure the `.github/workflows/` folder is in the main branch
-3. **Script timeout**: The workflow has a 15-minute timeout for your 10-minute script
-4. **API rate limits**: GitHub Actions provides stable IP addresses
-
-**View logs:**
-- Click on any workflow run → Click on "import-data" job → Expand the steps
-
-## 🔄 Migration from Replit
-
-Your current Replit setup will be replaced by this GitHub Actions automation. The script will run the same way but on GitHub's infrastructure instead of Replit.
-
-**Advantages over Replit:**
-- ✅ True scheduling (no manual triggers)
-- ✅ Better reliability
-- ✅ Free forever
-- ✅ Full logs and monitoring
-- ✅ No "always on" required
-
-## 📞 Support
-
-If you encounter issues:
-1. Check the Actions tab for error logs
-2. Verify all environment variables are correctly set
-3. Test with manual workflow dispatch first
-4. Check that the script works locally with the same environment variables
+The TypeScript version provides better reliability and maintainability for automated deployments! 🚀

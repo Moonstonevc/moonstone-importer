@@ -6,13 +6,24 @@
  * understood and modified by non-programmers.
  */
 
+import type {
+    ValidLocation,
+    ValidValuation,
+    ValidFundingStage,
+    ValidAvailability,
+    FormType,
+    ApiConfig,
+    QuestionGroups,
+    SectionTitles
+} from '../types/index.js';
+
 // ===================== FORM QUESTIONS REPOSITORY =====================
 /**
  * Complete list of all form questions used in the application.
  * Each question has a specific index number that corresponds to 
  * columns in the Google Sheets data.
  */
-export const FORM_QUESTIONS = [
+export const FORM_QUESTIONS: readonly string[] = [
     // Questions 0-17: Reserved/Empty slots
     "", "", "", "", "", "", "", "", "", "",
     "", "", "", "", "", "", "", "",
@@ -84,7 +95,7 @@ export const FORM_QUESTIONS = [
     "If you had to raise €150,000 in 90 days today, who would you turn to first and how would you present your proposal?", // 63
     "The relationships with outgoing entrepreneurs are a cornerstone of our program. Describe a specific experience where you had to earn the trust of a senior business owner. Walk us through your approach, what challenges you faced, and what actions you took to build a lasting, trusting relationship.", // 64
     "We are looking for visionary leaders who can inspire confidence in an unproven idea. Tell us about a time you secured buy-in for a big, bold project. Describe the project, the audience you were trying to convince, and the core arguments or story you used to get them on board.", // 65
-];
+] as const;
 
 // ===================== VALIDATION OPTIONS =====================
 /**
@@ -92,7 +103,7 @@ export const FORM_QUESTIONS = [
  * These must match exactly with the options configured in your Notion database.
  */
 
-export const VALID_LOCATIONS = [
+export const VALID_LOCATIONS: readonly ValidLocation[] = [
     "Northern Europe",
     "Western Europe",
     "Central Europe",
@@ -102,18 +113,18 @@ export const VALID_LOCATIONS = [
     "Latin America",
     "Africa",
     "Asia"
-];
+] as const;
 
-export const VALID_VALUATIONS = [
+export const VALID_VALUATIONS: readonly ValidValuation[] = [
     "< €5M",
     "€5M - €10M",
     "€11M - €15M",
     "€16M - €20M",
     "€21M - €25M",
     "> €26M"
-];
+] as const;
 
-export const VALID_FUNDING_STAGES = [
+export const VALID_FUNDING_STAGES: readonly ValidFundingStage[] = [
     "Pre-Seed",
     "Bridge to Seed",
     "Seed",
@@ -126,33 +137,33 @@ export const VALID_FUNDING_STAGES = [
     "Bridge to Series D",
     "Series D",
     "> Series D"
-];
+] as const;
 
-export const AVAILABILITY_OPTIONS = [
+export const AVAILABILITY_OPTIONS: readonly ValidAvailability[] = [
     "Morning (09:00–12:00)",
     "Early afternoon (12:00–15:00)",
     "Late afternoon (15:00–18:00)",
     "Evening (18:00–21:00)",
     "Late evening (21:00–23:00)",
     "I'm flexible / decide with the group"
-];
+] as const;
 
 // ===================== FORM TYPE MAPPINGS =====================
 /**
  * Maps the long form descriptions from Google Sheets to simple form types
  */
-export const FORM_TYPE_MAPPINGS = {
+export const FORM_TYPE_MAPPINGS: Record<string, FormType> = {
     "i am a founder and i want to take my startup to the moon.": "founder",
     "i know an incredible founder, someone moonstone should get to know.": "founder referral",
     "i am an entrepreneur and i want to be a searcher for moonstone's search fund.": "searcher",
     "i know an incredible entrepreneur, that would be a great searcher for moonstone's search fund.": "searcher referral"
-};
+} as const;
 
 // ===================== QUESTION GROUPS =====================
 /**
  * Organizes questions into logical groups for better presentation in Notion
  */
-export const QUESTION_GROUPS = {
+export const QUESTION_GROUPS: QuestionGroups = {
     // Referral Questions
     REFERRAL_BASICS: [25, 26, 27, 28],
     REFERRAL_PROBLEM_SOLVING: [29, 30],
@@ -171,13 +182,13 @@ export const QUESTION_GROUPS = {
     FOUNDER_CHALLENGES: [98, 99, 100, 101, 103],
     FOUNDER_HR: [106, 107, 108, 109, 110, 111, 112],
     FOUNDER_EXIT: [113, 114, 115, 116, 117]
-};
+} as const;
 
 // ===================== SECTION TITLES =====================
 /**
  * Human-readable titles for different sections in Notion pages
  */
-export const SECTION_TITLES = {
+export const SECTION_TITLES: SectionTitles = {
     REFERRAL_BASICS: "BASICS",
     REFERRAL_PROBLEM_SOLVING: "THE SEARCHER'S MIND: PROBLEM SOLVING, PRIORITIZATION & PRESSURE",
     REFERRAL_AI_LEVERAGE: "AGI-PROOFING THE FUTURE: AI LEVERAGE IN ACTION",
@@ -193,13 +204,13 @@ export const SECTION_TITLES = {
     FOUNDER_CHALLENGES: "CHALLENGES & PRIORITIES",
     FOUNDER_HR: "HR",
     FOUNDER_EXIT: "EXIT"
-};
+} as const;
 
 // ===================== API CONFIGURATION =====================
 /**
  * Configuration for external API connections
  */
-export const API_CONFIG = {
+export const API_CONFIG: ApiConfig = {
     GOOGLE_SHEETS: {
         SCOPES: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
         RANGE: "A2:ABY" // The range of cells to read from the spreadsheet
@@ -210,15 +221,15 @@ export const API_CONFIG = {
         BASE_DELAY: 600, // milliseconds
         RATE_LIMIT_DELAY: 100 // milliseconds between operations
     }
-};
+} as const;
 
 // ===================== ENVIRONMENT VARIABLES =====================
 /**
  * Required environment variables for the application to function
  */
-export const REQUIRED_ENV_VARS = [
+export const REQUIRED_ENV_VARS: readonly string[] = [
     "NOTION_API_KEY",
     "GAPI_SERVICE_ACCOUNT_KEY",
     "GOOGLE_SHEET_ID",
     "NOTION_DATABASE_ID"
-];
+] as const;

@@ -7,14 +7,21 @@
  */
 
 import { FORM_TYPE_MAPPINGS } from "../config/constants.js";
+import type {
+    SpreadsheetRow,
+    FormType,
+    CategorizedForms,
+    ValidForms,
+    FormStatistics
+} from "../types/index.js";
 
 /**
  * Determines the type of form submission based on the form intent
  * 
- * @param {Array} row - The form submission row from Google Sheets
- * @returns {string} - The form type ("founder", "founder referral", "searcher", "searcher referral", or "unknown")
+ * @param row - The form submission row from Google Sheets
+ * @returns The form type
  */
-export function classifyFormType(row) {
+export function classifyFormType(row: SpreadsheetRow): FormType {
     if (!row || !Array.isArray(row)) {
         return "unknown";
     }
@@ -37,17 +44,17 @@ export function classifyFormType(row) {
 /**
  * Separates all form submissions into categories
  * 
- * @param {Array<Array>} allRows - All rows from the Google Sheets
- * @returns {Object} - Object containing arrays of different form types
+ * @param allRows - All rows from the Google Sheets
+ * @returns Object containing arrays of different form types
  */
-export function categorizeAllForms(allRows) {
+export function categorizeAllForms(allRows: SpreadsheetRow[]): CategorizedForms {
     console.log("📊 Categorizing all form submissions...");
 
     if (!Array.isArray(allRows)) {
         throw new Error("Form data must be an array of rows");
     }
 
-    const categories = {
+    const categories: CategorizedForms = {
         founders: [],
         founderReferrals: [],
         searchers: [],
@@ -103,11 +110,11 @@ export function categorizeAllForms(allRows) {
 /**
  * Validates that a form submission has the minimum required data
  * 
- * @param {Array} row - The form submission row
- * @param {string} formType - The type of form
- * @returns {boolean} - True if the form has valid data
+ * @param row - The form submission row
+ * @param formType - The type of form
+ * @returns True if the form has valid data
  */
-export function validateFormData(row, formType) {
+export function validateFormData(row: SpreadsheetRow, formType: FormType): boolean {
     if (!row || !Array.isArray(row)) {
         return false;
     }
@@ -137,13 +144,13 @@ export function validateFormData(row, formType) {
 /**
  * Filters out invalid form submissions from each category
  * 
- * @param {Object} categories - Categorized forms from categorizeAllForms
- * @returns {Object} - Filtered categories with only valid forms
+ * @param categories - Categorized forms from categorizeAllForms
+ * @returns Filtered categories with only valid forms
  */
-export function filterValidForms(categories) {
+export function filterValidForms(categories: CategorizedForms): ValidForms {
     console.log("🔍 Filtering out invalid form submissions...");
 
-    const filtered = {
+    const filtered: ValidForms = {
         founders: [],
         founderReferrals: [],
         searchers: [],
@@ -155,10 +162,10 @@ export function filterValidForms(categories) {
         if (categoryName === "unknown") continue; // Skip unknown forms
 
         const formType = getFormTypeFromCategory(categoryName);
-        const validForms = forms.filter(row => validateFormData(row, formType));
+        const validForms = forms.filter((row: SpreadsheetRow) => validateFormData(row, formType));
         const invalidCount = forms.length - validForms.length;
 
-        filtered[categoryName] = validForms;
+        (filtered as any)[categoryName] = validForms;
 
         if (invalidCount > 0) {
             console.warn(`⚠️ Filtered out ${invalidCount} invalid ${categoryName} forms`);
@@ -172,11 +179,11 @@ export function filterValidForms(categories) {
 /**
  * Helper function to map category names to form types
  * 
- * @param {string} categoryName - The category name
- * @returns {string} - The corresponding form type
+ * @param categoryName - The category name
+ * @returns The corresponding form type
  */
-function getFormTypeFromCategory(categoryName) {
-    const mapping = {
+function getFormTypeFromCategory(categoryName: string): FormType {
+    const mapping: Record<string, FormType> = {
         founders: "founder",
         founderReferrals: "founder referral",
         searchers: "searcher",
@@ -189,21 +196,19 @@ function getFormTypeFromCategory(categoryName) {
 /**
  * Gets summary statistics about the form data
  * 
- * @param {Object} categories - Categorized forms
- * @returns {Object} - Summary statistics
+ * @param categories - Categorized forms
+ * @returns Summary statistics
  */
-export function getFormStatistics(categories) {
-    const stats = {
+export function getFormStatistics(categories: ValidForms): FormStatistics {
+    const stats: FormStatistics = {
         totalForms: 0,
         byType: {},
         completionRates: {}
     };
 
     for (const [categoryName, forms] of Object.entries(categories)) {
-        if (categoryName === "unknown") continue;
-
         const formType = getFormTypeFromCategory(categoryName);
-        const validForms = forms.filter(row => validateFormData(row, formType));
+        const validForms = forms.filter((row: SpreadsheetRow) => validateFormData(row, formType));
 
         stats.totalForms += forms.length;
         stats.byType[categoryName] = {

@@ -8,21 +8,26 @@
 
 import { distance } from "fastest-levenshtein";
 import { normalizeText } from "./textUtils.js";
+import type { SpreadsheetRow, MatchingDebugInfo } from "../types/index.js";
 
 /**
  * Finds the best match for a target string from a list of candidates
  * using fuzzy string matching (Levenshtein distance).
  * 
- * @param {string} target - The string to find a match for
- * @param {Array<string>} candidates - Array of possible matches
- * @param {number} maxDistance - Maximum allowed distance (default: 2)
- * @returns {string|null} - The best match or null if no good match found
+ * @param target - The string to find a match for
+ * @param candidates - Array of possible matches
+ * @param maxDistance - Maximum allowed distance (default: 2)
+ * @returns The best match or null if no good match found
  */
-export function findBestMatch(target, candidates, maxDistance = 2) {
+export function findBestMatch(
+    target: string,
+    candidates: string[],
+    maxDistance = 2
+): string | null {
     if (!target || !Array.isArray(candidates)) return null;
 
     const normalizedTarget = normalizeText(target);
-    let bestMatch = null;
+    let bestMatch: string | null = null;
     let bestScore = Infinity;
 
     for (const candidate of candidates) {
@@ -44,12 +49,12 @@ export function findBestMatch(target, candidates, maxDistance = 2) {
 /**
  * Checks if two strings are similar enough to be considered a match
  * 
- * @param {string} str1 - First string
- * @param {string} str2 - Second string  
- * @param {number} maxDistance - Maximum allowed distance (default: 2)
- * @returns {boolean} - True if strings match within tolerance
+ * @param str1 - First string
+ * @param str2 - Second string  
+ * @param maxDistance - Maximum allowed distance (default: 2)
+ * @returns True if strings match within tolerance
  */
-export function isStringMatch(str1, str2, maxDistance = 2) {
+export function isStringMatch(str1: string, str2: string, maxDistance = 2): boolean {
     if (!str1 || !str2) return false;
 
     const normalized1 = normalizeText(str1);
@@ -62,12 +67,12 @@ export function isStringMatch(str1, str2, maxDistance = 2) {
  * Creates a mapping of normalized keys to original values and associated data.
  * This is useful for building lookup tables from spreadsheet data.
  * 
- * @param {Array} rows - Array of data rows
- * @param {number} keyColumn - Column index to use as the key
- * @returns {Object} - Mapping object with normalized keys
+ * @param rows - Array of data rows
+ * @param keyColumn - Column index to use as the key
+ * @returns Mapping object with normalized keys
  */
-export function createKeyMapping(rows, keyColumn) {
-    const mapping = {};
+export function createKeyMapping(rows: SpreadsheetRow[], keyColumn: number): Record<string, { display: string; rows: SpreadsheetRow[] }> {
+    const mapping: Record<string, { display: string; rows: SpreadsheetRow[] }> = {};
 
     for (const row of rows) {
         const rawKey = row[keyColumn];
@@ -92,12 +97,16 @@ export function createKeyMapping(rows, keyColumn) {
 /**
  * Finds matching referrals for a given searcher name
  * 
- * @param {string} searcherName - The searcher's name to find referrals for
- * @param {Array} referralRows - Array of referral data rows
- * @param {number} referralNameColumn - Column index containing referral names
- * @returns {Array} - Array of matching referral rows
+ * @param searcherName - The searcher's name to find referrals for
+ * @param referralRows - Array of referral data rows
+ * @param referralNameColumn - Column index containing referral names
+ * @returns Array of matching referral rows
  */
-export function findMatchingReferrals(searcherName, referralRows, referralNameColumn) {
+export function findMatchingReferrals(
+    searcherName: string,
+    referralRows: SpreadsheetRow[],
+    referralNameColumn: number
+): SpreadsheetRow[] {
     if (!searcherName || !Array.isArray(referralRows)) return [];
 
     const normalizedSearcherName = normalizeText(searcherName);
@@ -115,11 +124,16 @@ export function findMatchingReferrals(searcherName, referralRows, referralNameCo
  * Debugs the relationship between searchers and their referrals,
  * identifying any mismatches or missing connections.
  * 
- * @param {Array} allRows - All data rows
- * @param {Array} searcherRows - Searcher form submissions
- * @param {Array} referralRows - Referral form submissions
+ * @param allRows - All data rows
+ * @param searcherRows - Searcher form submissions
+ * @param referralRows - Referral form submissions
+ * @returns Debug information about matching
  */
-export function debugSearcherReferralMatching(allRows, searcherRows, referralRows) {
+export function debugSearcherReferralMatching(
+    allRows: SpreadsheetRow[],
+    searcherRows: SpreadsheetRow[],
+    referralRows: SpreadsheetRow[]
+): MatchingDebugInfo {
     console.log("🔍 DEBUGGING SEARCHER-REFERRAL MATCHING");
 
     // Build set of searcher names from searcher forms (column 37)
@@ -130,7 +144,7 @@ export function debugSearcherReferralMatching(allRows, searcherRows, referralRow
     );
 
     // Check each referral to see if it matches a searcher
-    const unmatchedReferrals = [];
+    const unmatchedReferrals: Array<{ rowIndex: number; referredName: string; normalizedName: string }> = [];
 
     for (const referralRow of referralRows) {
         const referredName = normalizeText(referralRow[22] || ""); // Column 22: referred searcher name
@@ -139,7 +153,7 @@ export function debugSearcherReferralMatching(allRows, searcherRows, referralRow
             const rowIndex = allRows.indexOf(referralRow);
             unmatchedReferrals.push({
                 rowIndex,
-                referredName: referralRow[22], // Keep original for display
+                referredName: referralRow[22] || "", // Keep original for display
                 normalizedName: referredName
             });
         }

@@ -8,37 +8,39 @@
 
 import { Client } from "@notionhq/client";
 import { API_CONFIG } from "../config/constants.js";
+import type { NotionClientWithRetry, NotionBlock, RetryOptions } from "../types/index.js";
+import { ServiceError } from "../types/index.js";
 
 /**
  * Creates a Notion client with retry capabilities
  * 
- * @param {string} apiKey - Notion API key
- * @returns {Object} - Notion client with retry methods
+ * @param apiKey - Notion API key
+ * @returns Notion client with retry methods
  */
-export function createNotionClient(apiKey) {
+export function createNotionClient(apiKey: string): NotionClientWithRetry {
     console.log("🔧 Setting up Notion client...");
 
     if (!apiKey) {
-        throw new Error("Notion API key is required");
+        throw new ServiceError("Notion API key is required", "notion");
     }
 
     const notion = new Client({ auth: apiKey });
 
     // Create client with retry wrapper methods
-    const clientWithRetry = {
+    const clientWithRetry: NotionClientWithRetry = {
         blocks: {
             children: {
-                append: (args) => withRetry(() => notion.blocks.children.append(args)),
-                list: (args) => withRetry(() => notion.blocks.children.list(args)),
+                append: (args: any) => withRetry(() => notion.blocks.children.append(args)),
+                list: (args: any) => withRetry(() => notion.blocks.children.list(args)),
             },
-            update: (args) => withRetry(() => notion.blocks.update(args)),
+            update: (args: any) => withRetry(() => notion.blocks.update(args)),
         },
         pages: {
-            create: (args) => withRetry(() => notion.pages.create(args)),
-            update: (args) => withRetry(() => notion.pages.update(args)),
+            create: (args: any) => withRetry(() => notion.pages.create(args)),
+            update: (args: any) => withRetry(() => notion.pages.update(args)),
         },
         databases: {
-            query: (args) => withRetry(() => notion.databases.query(args)),
+            query: (args: any) => withRetry(() => notion.databases.query(args)),
         },
     };
 
@@ -49,27 +51,30 @@ export function createNotionClient(apiKey) {
 /**
  * Utility function for adding delays between operations
  * 
- * @param {number} milliseconds - How long to wait
- * @returns {Promise} - Promise that resolves after the delay
+ * @param milliseconds - How long to wait
+ * @returns Promise that resolves after the delay
  */
-function sleep(milliseconds) {
+function sleep(milliseconds: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, milliseconds));
 }
 
 /**
  * Retry wrapper for Notion operations with exponential backoff
  * 
- * @param {Function} operation - The operation to retry
- * @param {Object} options - Retry configuration
- * @returns {Promise} - Result of the operation
+ * @param operation - The operation to retry
+ * @param options - Retry configuration
+ * @returns Result of the operation
  */
-async function withRetry(operation, options = {}) {
+async function withRetry<T>(
+    operation: () => Promise<T>,
+    options: RetryOptions = {}
+): Promise<T> {
     const {
         maxAttempts = API_CONFIG.NOTION.RETRY_ATTEMPTS,
         baseDelay = API_CONFIG.NOTION.BASE_DELAY
     } = options;
 
-    let lastError;
+    let lastError: Error | unknown;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
@@ -81,7 +86,8 @@ async function withRetry(operation, options = {}) {
             const isRetryable = isRetryableError(error);
 
             if (!isRetryable || attempt === maxAttempts) {
-                console.error(`❌ Notion operation failed after ${attempt} attempts:`, error.message);
+                const errorMessage = error instanceof Error ? error.message : String(error);
+                console.error(`❌ Notion operation failed after ${attempt} attempts:`, errorMessage);
                 throw error;
             }
 
@@ -98,12 +104,16 @@ async function withRetry(operation, options = {}) {
 /**
  * Determines if a Notion API error is worth retrying
  * 
- * @param {Error} error - The error to check
- * @returns {boolean} - True if the error is retryable
+ * @param error - The error to check
+ * @returns True if the error is retryable
  */
-function isRetryableError(error) {
-    const code = error?.code || error?.status || error?.name || error?.cause?.code;
-    const message = (error?.message || "").toLowerCase();
+function isRetryableError(error: unknown): boolean {
+    if (!error || typeof error !== 'object') return false;
+
+    const errorObj = error as Record<string, unknown>;
+    const code = errorObj.code || errorObj.status || errorObj.name ||
+        (errorObj.cause as Record<string, unknown>)?.code;
+    const message = typeof errorObj.message === 'string' ? errorObj.message.toLowerCase() : '';
 
     // Common retryable conditions for Notion API
     const retryableConditions = [
@@ -125,12 +135,16 @@ function isRetryableError(error) {
 /**
  * Safely appends children to a Notion block, filtering out invalid entries
  * 
- * @param {string} blockId - The parent block ID
- * @param {Array} children - Array of child blocks to append
- * @param {Object} notionClient - Notion client with retry capabilities
- * @returns {Promise<Object>} - Result of the append operation
+ * @param blockId - The parent block ID
+ * @param children - Array of child blocks to append
+ * @param notionClient - Notion client with retry capabilities
+ * @returns Result of the append operation
  */
-export async function appendChildrenSafely(blockId, children, notionClient) {
+export async function appendChildrenSafely(
+    blockId: string,
+    children: NotionBlock[],
+    notionClient: NotionClientWithRetry
+): Promise<any> {
     // Filter out any null, undefined, or invalid children
     const validChildren = (children || []).filter(child =>
         child &&
@@ -155,19 +169,24 @@ export async function appendChildrenSafely(blockId, children, notionClient) {
         return result;
 
     } catch (error) {
-        console.error("❌ Failed to append children:", error.message);
-        throw error;
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.error("❌ Failed to append children:", errorMessage);
+        throw new ServiceError(`Failed to append children: ${errorMessage}`, "notion", error as Error);
     }
 }
 
 /**
  * Removes duplicate toggles with the same title from a parent block
  * 
- * @param {string} parentId - The parent block ID
- * @param {Array<string>} titles - Array of toggle titles to deduplicate
- * @param {Object} notionClient - Notion client with retry capabilities
+ * @param parentId - The parent block ID
+ * @param titles - Array of toggle titles to deduplicate
+ * @param notionClient - Notion client with retry capabilities
  */
-export async function removeDuplicateToggles(parentId, titles, notionClient) {
+export async function removeDuplicateToggles(
+    parentId: string,
+    titles: string[],
+    notionClient: NotionClientWithRetry
+): Promise<void> {
     if (!parentId || !Array.isArray(titles) || titles.length === 0) {
         return;
     }
@@ -178,7 +197,7 @@ export async function removeDuplicateToggles(parentId, titles, notionClient) {
         const children = await notionClient.blocks.children.list({ block_id: parentId });
 
         for (const title of titles) {
-            const togglesWithTitle = children.results.filter(block =>
+            const togglesWithTitle = children.results.filter((block: any) =>
                 block.type === "toggle" &&
                 block.toggle?.rich_text?.[0]?.text?.content === title
             );
@@ -194,23 +213,27 @@ export async function removeDuplicateToggles(parentId, titles, notionClient) {
             }
         }
     } catch (error) {
-        console.error("❌ Failed to remove duplicate toggles:", error.message);
-        throw error;
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.error("❌ Failed to remove duplicate toggles:", errorMessage);
+        throw new ServiceError(`Failed to remove duplicate toggles: ${errorMessage}`, "notion", error as Error);
     }
 }
 
 /**
  * Fetches all pages from a Notion database with pagination
  * 
- * @param {string} databaseId - The database ID
- * @param {Object} notionClient - Notion client with retry capabilities
- * @returns {Promise<Array>} - Array of all pages in the database
+ * @param databaseId - The database ID
+ * @param notionClient - Notion client with retry capabilities
+ * @returns Array of all pages in the database
  */
-export async function getAllDatabasePages(databaseId, notionClient) {
+export async function getAllDatabasePages(
+    databaseId: string,
+    notionClient: NotionClientWithRetry
+): Promise<any[]> {
     console.log(`📚 Fetching all pages from database: ${databaseId}`);
 
-    const allPages = [];
-    let cursor = undefined;
+    const allPages: any[] = [];
+    let cursor: string | undefined = undefined;
     let pageCount = 0;
 
     try {
@@ -234,20 +257,25 @@ export async function getAllDatabasePages(databaseId, notionClient) {
         return allPages;
 
     } catch (error) {
-        console.error("❌ Failed to fetch database pages:", error.message);
-        throw error;
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.error("❌ Failed to fetch database pages:", errorMessage);
+        throw new ServiceError(`Failed to fetch database pages: ${errorMessage}`, "notion", error as Error);
     }
 }
 
 /**
  * Finds an existing page in a database by title
  * 
- * @param {string} databaseId - The database ID
- * @param {string} title - The page title to search for
- * @param {Object} notionClient - Notion client with retry capabilities
- * @returns {Promise<Object|null>} - The found page or null
+ * @param databaseId - The database ID
+ * @param title - The page title to search for
+ * @param notionClient - Notion client with retry capabilities
+ * @returns The found page or null
  */
-export async function findPageByTitle(databaseId, title, notionClient) {
+export async function findPageByTitle(
+    databaseId: string,
+    title: string,
+    notionClient: NotionClientWithRetry
+): Promise<any | null> {
     if (!title) return null;
 
     console.log(`🔍 Searching for page with title: "${title}"`);
@@ -272,18 +300,19 @@ export async function findPageByTitle(databaseId, title, notionClient) {
         return page;
 
     } catch (error) {
-        console.error(`❌ Failed to search for page "${title}":`, error.message);
-        throw error;
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.error(`❌ Failed to search for page "${title}":`, errorMessage);
+        throw new ServiceError(`Failed to search for page: ${errorMessage}`, "notion", error as Error);
     }
 }
 
 /**
  * Validates that the required Notion environment variables are present
  * 
- * @param {Object} env - Environment variables object
- * @returns {boolean} - True if all required variables are present
+ * @param env - Environment variables object
+ * @returns True if all required variables are present
  */
-export function validateNotionEnvironment(env) {
+export function validateNotionEnvironment(env: Record<string, string | undefined>): boolean {
     const required = ["NOTION_API_KEY", "NOTION_DATABASE_ID"];
     const missing = required.filter(key => !env[key]);
 
@@ -299,10 +328,10 @@ export function validateNotionEnvironment(env) {
 /**
  * Creates a standardized table block for Notion
  * 
- * @param {Array<Array>} rows - Array of [label, value] pairs
- * @returns {Object} - Notion table block object
+ * @param rows - Array of [label, value] pairs
+ * @returns Notion table block object
  */
-export function createTableBlock(rows) {
+export function createTableBlock(rows: Array<[string, string]>): NotionBlock {
     if (!Array.isArray(rows) || rows.length === 0) {
         throw new Error("Table rows must be a non-empty array");
     }
@@ -325,18 +354,18 @@ export function createTableBlock(rows) {
                 },
             })),
         },
-    };
+    } as NotionBlock;
 }
 
 /**
  * Creates a toggle block with a quote child containing the answer
  * 
- * @param {string} title - The toggle title (question)
- * @param {string} content - The content for the quote (answer)
- * @returns {Object} - Notion toggle block object
+ * @param title - The toggle title (question)
+ * @param content - The content for the quote (answer)
+ * @returns Notion toggle block object
  */
-export function createQuoteToggle(title, content) {
-    const children = [];
+export function createQuoteToggle(title: string, content: string): NotionBlock {
+    const children: any[] = [];
 
     if (content && content.trim() !== "") {
         children.push({
@@ -355,5 +384,5 @@ export function createQuoteToggle(title, content) {
             rich_text: [{ type: "text", text: { content: title || "Untitled" } }],
             children: children,
         },
-    };
+    } as NotionBlock;
 }

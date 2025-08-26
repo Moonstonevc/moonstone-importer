@@ -19,14 +19,20 @@
  * - GAPI_SERVICE_ACCOUNT_KEY: JSON string of Google service account credentials
  */
 
+// Load environment variables from .env file
+import dotenv from "dotenv";
+dotenv.config();
+
 import { validateEnvironment } from "./core/environmentValidator.js";
 import { initializeServices, processFormData, importToNotion } from "./core/applicationOrchestrator.js";
 import { displayResults } from "./core/resultsReporter.js";
+import type { ImportResults } from "./types/index.js";
+import { ApplicationError } from "./types/index.js";
 
 /**
  * Main application function that orchestrates the entire import process
  */
-async function main() {
+async function main(): Promise<void> {
     console.log("🚀 MOONSTONE IMPORTER STARTING");
     console.log("=".repeat(50));
 
@@ -45,7 +51,7 @@ async function main() {
 
         // Step 4: Import to Notion
         console.log("📝 Step 4: Importing data to Notion...");
-        const results = await importToNotion(processedData, notionClient);
+        const results: ImportResults = await importToNotion(processedData, notionClient);
 
         // Step 5: Display Results
         console.log("📈 Step 5: Import completed successfully!");
@@ -59,11 +65,21 @@ async function main() {
 /**
  * Handles application-level errors with helpful troubleshooting information
  * 
- * @param {Error} error - The error that occurred
+ * @param error - The error that occurred
  */
-function handleApplicationError(error) {
+function handleApplicationError(error: unknown): never {
     console.error("❌ APPLICATION FAILED:");
-    console.error(error.message);
+
+    if (error instanceof ApplicationError) {
+        console.error(error.message);
+        if (error.context) {
+            console.error("Context:", error.context);
+        }
+    } else if (error instanceof Error) {
+        console.error(error.message);
+    } else {
+        console.error("Unknown error occurred:", error);
+    }
 
     console.error("\n🔍 TROUBLESHOOTING TIPS:");
     console.error("- Check that all environment variables are set correctly");
@@ -78,7 +94,7 @@ function handleApplicationError(error) {
 /**
  * Error handler for uncaught exceptions
  */
-process.on('uncaughtException', (error) => {
+process.on('uncaughtException', (error: Error) => {
     console.error('\n❌ UNCAUGHT EXCEPTION:');
     console.error(error.message);
     console.error(error.stack);
@@ -88,7 +104,7 @@ process.on('uncaughtException', (error) => {
 /**
  * Error handler for unhandled promise rejections
  */
-process.on('unhandledRejection', (reason, promise) => {
+process.on('unhandledRejection', (reason: unknown, promise: Promise<unknown>) => {
     console.error('\n❌ UNHANDLED PROMISE REJECTION:');
     console.error('Promise:', promise);
     console.error('Reason:', reason);
@@ -96,7 +112,7 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 // Start the application
-main().catch(error => {
-    console.error('❌ Application startup failed:', error.message);
+main().catch((error: unknown) => {
+    console.error('❌ Application startup failed:', error instanceof Error ? error.message : error);
     process.exit(1);
 });

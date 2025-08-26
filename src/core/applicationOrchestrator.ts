@@ -12,24 +12,41 @@ import { categorizeAllForms, filterValidForms, getFormStatistics } from "../proc
 import { processFounders } from "../processors/founderProcessor.js";
 import { processSearchers } from "../processors/searcherProcessor.js";
 import { debugSearcherReferralMatching } from "../utils/matchingUtils.js";
+import type {
+    SpreadsheetRow,
+    ProcessedFormData,
+    ImportResults,
+    NotionClientWithRetry
+} from "../types/index.js";
+import { getEnvironmentVariables } from "./environmentValidator.js";
+
+/**
+ * Service initialization result
+ */
+interface ServiceInitializationResult {
+    sheetsData: SpreadsheetRow[];
+    notionClient: NotionClientWithRetry;
+}
 
 /**
  * Initializes connections to Google Sheets and Notion services
  * 
- * @returns {Promise<Object>} - Object containing sheetsData and notionClient
+ * @returns Object containing sheetsData and notionClient
  */
-export async function initializeServices() {
+export async function initializeServices(): Promise<ServiceInitializationResult> {
     console.log("🔗 Connecting to external services...");
+
+    const env = getEnvironmentVariables();
 
     // Initialize Notion client
     console.log("🔗 Connecting to Notion...");
-    const notionClient = createNotionClient(process.env.NOTION_API_KEY);
+    const notionClient = createNotionClient(env.NOTION_API_KEY);
 
     // Read data from Google Sheets
     console.log("📊 Reading data from Google Sheets...");
     const sheetsData = await readSpreadsheetData(
-        process.env.GOOGLE_SHEET_ID,
-        process.env.GAPI_SERVICE_ACCOUNT_KEY
+        env.GOOGLE_SHEET_ID,
+        env.GAPI_SERVICE_ACCOUNT_KEY
     );
 
     console.log("✅ Services initialized successfully");
@@ -39,10 +56,10 @@ export async function initializeServices() {
 /**
  * Processes and categorizes the raw form data from Google Sheets
  * 
- * @param {Array<Array>} sheetsData - Raw data from Google Sheets
- * @returns {Promise<Object>} - Processed and categorized form data
+ * @param sheetsData - Raw data from Google Sheets
+ * @returns Processed and categorized form data
  */
-export async function processFormData(sheetsData) {
+export async function processFormData(sheetsData: SpreadsheetRow[]): Promise<ProcessedFormData> {
     console.log("🔄 Processing form data...");
 
     if (!sheetsData || sheetsData.length === 0) {
@@ -81,14 +98,18 @@ export async function processFormData(sheetsData) {
 /**
  * Imports the processed data to Notion
  * 
- * @param {Object} processedData - Processed form data
- * @param {Object} notionClient - Notion client with retry capabilities
- * @returns {Promise<Object>} - Import results summary
+ * @param processedData - Processed form data
+ * @param notionClient - Notion client with retry capabilities
+ * @returns Import results summary
  */
-export async function importToNotion(processedData, notionClient) {
+export async function importToNotion(
+    processedData: ProcessedFormData,
+    notionClient: NotionClientWithRetry
+): Promise<ImportResults> {
     console.log("📝 Starting Notion import process...");
 
-    const databaseId = process.env.NOTION_DATABASE_ID;
+    const env = getEnvironmentVariables();
+    const databaseId = env.NOTION_DATABASE_ID;
     const { valid: forms } = processedData;
 
     // Get existing pages for reference
@@ -96,7 +117,7 @@ export async function importToNotion(processedData, notionClient) {
     const existingPages = await getAllDatabasePages(databaseId, notionClient);
     console.log(`📄 Found ${existingPages.length} existing pages in database`);
 
-    const results = {
+    const results: ImportResults = {
         founders: { processed: 0, created: 0, updated: 0, errors: 0 },
         searchers: { processed: 0, created: 0, updated: 0, errors: 0 },
         totalTime: Date.now()

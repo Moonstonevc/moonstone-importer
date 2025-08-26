@@ -5,12 +5,14 @@
  * It provides comprehensive summaries and statistics about the import process.
  */
 
+import type { ImportResults, ProcessingResults, SummaryMetrics } from "../types/index.js";
+
 /**
  * Displays a comprehensive summary of the import results
  * 
- * @param {Object} results - Import results from the import process
+ * @param results - Import results from the import process
  */
-export function displayResults(results) {
+export function displayResults(results: ImportResults): void {
     console.log("\n" + "=".repeat(50));
     console.log("📈 IMPORT RESULTS SUMMARY");
     console.log("=".repeat(50));
@@ -33,9 +35,9 @@ export function displayResults(results) {
 /**
  * Displays results for founder processing
  * 
- * @param {Object} founderResults - Results from founder processing
+ * @param founderResults - Results from founder processing
  */
-function displayFounderResults(founderResults) {
+function displayFounderResults(founderResults: ProcessingResults): void {
     console.log("🏢 FOUNDERS:");
     console.log(`  📊 Processed: ${founderResults.processed}`);
     console.log(`  🆕 Created: ${founderResults.created}`);
@@ -47,9 +49,9 @@ function displayFounderResults(founderResults) {
 /**
  * Displays results for searcher processing
  * 
- * @param {Object} searcherResults - Results from searcher processing
+ * @param searcherResults - Results from searcher processing
  */
-function displaySearcherResults(searcherResults) {
+function displaySearcherResults(searcherResults: ProcessingResults): void {
     console.log("\n🔍 SEARCHERS:");
     console.log(`  📊 Processed: ${searcherResults.processed}`);
     console.log(`  🆕 Created: ${searcherResults.created}`);
@@ -61,9 +63,9 @@ function displaySearcherResults(searcherResults) {
 /**
  * Displays overall statistics across all processing
  * 
- * @param {Object} results - Complete results object
+ * @param results - Complete results object
  */
-function displayOverallStatistics(results) {
+function displayOverallStatistics(results: ImportResults): void {
     const totalProcessed = results.founders.processed + results.searchers.processed;
     const totalCreated = results.founders.created + results.searchers.created;
     const totalUpdated = results.founders.updated + results.searchers.updated;
@@ -87,9 +89,9 @@ function displayOverallStatistics(results) {
 /**
  * Displays the final status message based on results
  * 
- * @param {Object} results - Complete results object
+ * @param results - Complete results object
  */
-function displayFinalStatus(results) {
+function displayFinalStatus(results: ImportResults): void {
     const totalProcessed = results.founders.processed + results.searchers.processed;
     const totalErrors = results.founders.errors + results.searchers.errors;
 
@@ -110,10 +112,10 @@ function displayFinalStatus(results) {
 /**
  * Generates a summary object with key metrics
  * 
- * @param {Object} results - Complete results object
- * @returns {Object} - Summary metrics object
+ * @param results - Complete results object
+ * @returns Summary metrics object
  */
-export function generateSummaryMetrics(results) {
+export function generateSummaryMetrics(results: ImportResults): SummaryMetrics {
     const totalProcessed = results.founders.processed + results.searchers.processed;
     const totalCreated = results.founders.created + results.searchers.created;
     const totalUpdated = results.founders.updated + results.searchers.updated;
@@ -131,5 +133,25 @@ export function generateSummaryMetrics(results) {
         executionTime: Math.round(results.totalTime / 1000),
         founderStats: results.founders,
         searcherStats: results.searchers
+    };
+}
+
+/**
+ * Formats results for JSON export
+ * 
+ * @param results - Complete results object
+ * @returns JSON-serializable results object
+ */
+export function formatResultsForExport(results: ImportResults): Record<string, unknown> {
+    const summary = generateSummaryMetrics(results);
+
+    return {
+        timestamp: new Date().toISOString(),
+        summary,
+        detailed: {
+            founders: results.founders,
+            searchers: results.searchers,
+            totalExecutionTime: results.totalTime
+        }
     };
 }
