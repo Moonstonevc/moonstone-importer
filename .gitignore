@@ -1,19 +1,9 @@
-# ===================== DEPENDENCIES =====================
+# Dependencies
 node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# ===================== TYPESCRIPT BUILD =====================
-# Compiled JavaScript output
-dist/
-build/
-*.tsbuildinfo
-
-# Source maps
-*.map
-
-# ===================== ENVIRONMENT & SECRETS =====================
 # Environment variables
 .env
 .env.local
@@ -21,89 +11,21 @@ build/
 .env.test.local
 .env.production.local
 
-# API keys and sensitive data
-*.key
-*.pem
-service-account.json
-google-credentials.json
-
-# ===================== IDE & EDITOR FILES =====================
-# VSCode
-.vscode/
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
-
-# IntelliJ IDEA
-.idea/
-*.iml
-*.ipr
-*.iws
-
-# Sublime Text
-*.sublime-project
-*.sublime-workspace
-
-# Vim
-*.swp
-*.swo
-*~
-
-# Emacs
-*~
-\#*\#
-/.emacs.desktop
-/.emacs.desktop.lock
-*.elc
-
-# ===================== OPERATING SYSTEM =====================
-# macOS
-.DS_Store
-.AppleDouble
-.LSOverride
-Icon?
-._*
-.Spotlight-V100
-.Trashes
-.fseventsd
-
-# Windows
-Thumbs.db
-ehthumbs.db
-Desktop.ini
-$RECYCLE.BIN/
-
-# Linux
-*~
-.directory
-.Trash-*
-
-# ===================== LOGS & TEMP FILES =====================
-# Logs
-logs/
+# Runtime files
 *.log
-pids/
 *.pid
 *.seed
 *.pid.lock
-
-# Temporary files
-tmp/
-temp/
-.tmp/
-.cache/
 
 # Coverage directory used by tools like istanbul
 coverage/
-.nyc_output/
 
-# ===================== RUNTIME & CACHE =====================
-# Runtime data
-pids
-*.pid
-*.seed
-*.pid.lock
+# NYC test coverage
+.nyc_output
+
+# Dependency directories
+node_modules/
+jspm_packages/
 
 # Optional npm cache directory
 .npm
@@ -111,72 +33,15 @@ pids
 # Optional eslint cache
 .eslintcache
 
-# Microbundle cache
-.rpt2_cache/
-.rts2_cache_cjs/
-.rts2_cache_es/
-.rts2_cache_umd/
+# Replit files
+.replit
+replit.nix
 
-# Optional REPL history
-.node_repl_history
-
-# Output of 'npm pack'
-*.tgz
-
-# Yarn Integrity file
-.yarn-integrity
-
-# ===================== PROJECT SPECIFIC =====================
-# Test files and mock data
-test-data/
-mock-data/
-*.test.local.*
-
-# Backup files
-*.backup
-*.bak
-*.orig
-
-# Documentation builds (if using doc generators)
-docs/build/
-api-docs/
-
-# ===================== DEPLOYMENT =====================
-# Deployment artifacts
-deploy/
-deployment/
-.deploy/
-
-# Docker
-Dockerfile.local
-docker-compose.override.yml
-
-# ===================== TYPESCRIPT SPECIFIC =====================
-# TypeScript incremental compilation cache
-*.tsbuildinfo
-
-# TypeScript declaration maps
-*.d.ts.map
-
-# ESLint cache
-.eslintcache
-
-# Prettier cache
-.prettiercache
-
-# ===================== KEEP THESE FILES =====================
-# Keep important configuration files
-!tsconfig.json
-!package.json
-!package-lock.json
-!.gitignore
-!README.md
-!*.md
-
-# Keep TypeScript source files
-!src/**/*.ts
-!src/**/*.tsx
-
-# Keep type definitions
-!src/types/**/*.d.ts
-!types/**/*.d.ts
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
