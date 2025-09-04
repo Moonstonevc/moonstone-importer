@@ -114,7 +114,10 @@ try {
   process.exit(1);
 }
 
-const notion = new Client({ auth: process.env.NOTION_API_KEY });
+const notion = new Client({
+  auth: process.env.NOTION_API_KEY,
+  timeoutMs: 120000, 
+});
 
 const google_client = auth.fromJSON(json_data);
 google_client.scopes = [
@@ -125,7 +128,7 @@ const sheets = google.sheets({ version: "v4", auth: google_client });
 // --- Notion retry helpers (inserted after client init) ---
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-const withRetry = async (fn, { tries = 7, baseDelay = 600 } = {}) => {
+const withRetry = async (fn, { tries = 8, baseDelay = 1000 } = {}) => {
   let lastErr;
   for (let i = 0; i < tries; i++) {
     try {
@@ -138,18 +141,27 @@ const withRetry = async (fn, { tries = 7, baseDelay = 600 } = {}) => {
 
       const transient =
         code === "rate_limited" ||
+        code === "service_unavailable" ||                 
+        code === "notionhq_client_request_timeout" ||     
         code === 429 ||
+        code === 408 ||                                   
+        code === 500 ||
+        code === 502 ||
         code === 503 ||
-        code === "ECONNRESET" ||
-        code === "ENOTFOUND" ||
-        code === "UND_ERR_CONNECT_TIMEOUT" ||
-        code === "UND_ERR_HEADERS_TIMEOUT" ||
-        code === "UND_ERR_SOCKET" ||
+        code === 504 ||
+        msg.includes("timed out") ||                      
+        msg.includes("timeout") ||                        
+        msg.includes("socket hang up") ||
         msg.includes("fetch failed") ||
         msg.includes("terminated");
 
       if (transient) {
-        await sleep(baseDelay * Math.pow(2, i)); // exponential backoff
+        const wait = Math.min(30000, baseDelay * Math.pow(2, i)); // cap at 30s
+        console.warn(
+          `⏳ withRetry: attempt ${i + 1}/${tries} failed (${code || err.name}): ${err.message}. ` +
+          `Retrying in ${wait}ms…`
+        );
+        await sleep(wait);
         continue;
       }
       // not transient → bubble up
