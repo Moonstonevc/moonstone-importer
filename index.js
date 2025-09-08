@@ -856,7 +856,7 @@ async function processUnmatchedSearcherReferrals(searchers, searcherReferrals) {
     const completionPercent =
       totalCount === 0 ? 0 : Math.round((answeredCount / totalCount) * 100);
     const priorityRanking = row[105]
-      ? row[104].split(",").map((s) => s.trim())
+      ? row[105].split(",").map((s) => s.trim())
       : [];
 
       // Try to find an existing page
