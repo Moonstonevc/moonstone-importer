@@ -926,6 +926,9 @@ async function processUnmatchedSearcherReferrals(searchers, searcherReferrals) {
           "Searcher Availability": mapAvailabilityOption(row[48])
           ? { select: { name: mapAvailabilityOption(row[48]) } }
           : undefined,
+          "Start of Availability": row[47]
+          ? { rich_text: [{ text: { content: String(row[47]) } }] }
+          : undefined,
           "Searcher CV": row[44]
             ? {
                 files: [
@@ -2453,6 +2456,9 @@ async function handleSearcherPages(searchers, searcherReferrals, notion) {
           "Searcher Availability": mapAvailabilityOption(row[48])
           ? { select: { name: mapAvailabilityOption(row[48]) } }
           : undefined,
+          "Start of Availability": row[47]
+          ? { rich_text: [{ text: { content: String(row[47]) } }] }
+          : undefined,
           "Form filled out:": row[2]
             ? { date: { start: new Date(row[2]).toISOString() } }
             : undefined,
@@ -2491,6 +2497,9 @@ async function handleSearcherPages(searchers, searcherReferrals, notion) {
             : undefined,
           "Searcher Availability": mapAvailabilityOption(row[48])
           ? { select: { name: mapAvailabilityOption(row[48]) } }
+          : undefined,
+          "Start of Availability": row[47]
+          ? { rich_text: [{ text: { content: String(row[47]) } }] }
           : undefined,
           "Form filled out:": row[2]
             ? { date: { start: new Date(row[2]).toISOString() } }
