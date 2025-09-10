@@ -783,7 +783,7 @@ async function processUnmatchedSearcherReferrals(searchers, searcherReferrals) {
       const matchedDisplay   = bundle?.display || startupName;
     const founderForm_filled_out = row[2] || null;
     const founderDeck = row[75]?.trim() || null;
-    const founderCount = Number(row[70]) || 1;
+    const founderCount = Number(row[118]) || 1;
 
     // 🌟 Detect Form Type from column 3
     const formIntent = row[3]?.trim();
@@ -1484,7 +1484,7 @@ async function processUnmatchedSearcherReferrals(searchers, searcherReferrals) {
         "How much revenue has @About your startup generated in the last 12 months?",
         "How much revenue can @About your startup generate in the next 12 months?",
       ];
-      const financialAnswers = [87, 88, 95, 96, 97].map((i) => row[i]);
+      const financialAnswers = [87, 88, 89, 90, 97].map((i) => row[i]);
 
       const existingFinancialChildren = await notionWithRetry.blocks.children.list({ block_id: financialsToggle.id });
 
@@ -1771,7 +1771,7 @@ async function processUnmatchedSearcherReferrals(searchers, searcherReferrals) {
 
         const qAnswers =
           i === 0
-            ? Array.from({ length: 14 }, (_, j) => row[124 + j])
+            ? Array.from({ length: 14 }, (_, j) => row[119 + j])
             : qaIndices[i - 1].map((idx) => row[idx] || "");
 
         // Quote toggles (create new, or update if text changed)
