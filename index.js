@@ -711,13 +711,13 @@ async function processUnmatchedSearcherReferrals(searchers, searcherReferrals) {
 
     // Map the long Tally prompt to a simple form type
     const simpleType =
-      signal === "i am a founder and i want to take my startup to the moon."
+      signal === "founder: i am a founder and i want to take my startup to the moon."
         ? "founder"
-        : signal === "i know an incredible founder, someone moonstone should get to know."
+        : signal === "founder referral: i know an incredible founder, someone moonstone should get to know."
         ? "founder referral"
-        : signal === "i am an entrepreneur and i want to be a searcher for moonstone's search fund (or apply as an intern)."
+        : signal === "searcher: i am an entrepreneur and i want to be a searcher for moonstone's search fund (or apply as an intern)."
         ? "searcher"
-        : signal === "i know an incredible entrepreneur, that would be a great searcher for moonstone's search fund."
+        : signal === "searcher referral: i know an incredible entrepreneur, that would be a great searcher for moonstone's search fund."
         ? "searcher referral"
         : "";
 
@@ -791,21 +791,21 @@ async function processUnmatchedSearcherReferrals(searchers, searcherReferrals) {
     let formType;
     if (
       formIntent ===
-      "I know an incredible founder, someone Moonstone should get to know."
+      "Founder Referral: I know an incredible founder, someone Moonstone should get to know."
     ) {
       formType = "Founder Referral";
     } else if (
-      formIntent === "I am a founder and I want to take my startup to the moon."
+      formIntent === "Founder: I am a founder and I want to take my startup to the moon."
     ) {
       formType = "Founder";
     } else if (
       formIntent ===
-      "I know an incredible entrepreneur, that would be a great searcher for Moonstone's Search Fund."
+      "Searcher Referral: I know an incredible entrepreneur, that would be a great searcher for Moonstone's Search Fund."
     ) {
       formType = "Searcher Referral";
     } else if (
       formIntent ===
-      "I am an entrepreneur and I want to be a searcher for Moonstone's Search Fund (or apply as an intern)."
+      "Searcher: I am an entrepreneur and I want to be a searcher for Moonstone's Search Fund (or apply as an intern)."
     ) {
       formType = "Searcher";
     }
