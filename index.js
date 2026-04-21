@@ -90,6 +90,7 @@ function normName(s) {
 }
 
 function getBestMatch(targetKey, candidates, threshold = 2) {
+  if (targetKey.length < 5) return null;
   let best = null, bestScore = Infinity;
   for (const c of candidates) {
     const score = distance(targetKey, c);
