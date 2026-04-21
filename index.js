@@ -294,7 +294,7 @@ async function processIncomingRow(row, existingPages) {
       },
     });
     // Register in local cache so later rows / refs can find it
-    existingPages.push(parentPage);
+    existingPages.push({   id: parentPage.id,   properties: { Name: { title: [{ text: { content: pageTitle } }] } } });
   }
 
   // ── Ensure "Form" toggle exists ───────────────────────────────────────────
