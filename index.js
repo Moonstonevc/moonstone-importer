@@ -407,7 +407,10 @@ async function processReferenceRow(refRow, existingPages) {
           ...refProps,
         },
       });
-      existingPages.push(page);
+      existingPages.push({
+  id: page.id,
+  properties: { Name: { title: [{ text: { content: pageTitle } }] } }
+});
     }
 
     // Ensure Referral Insight toggle
@@ -475,7 +478,7 @@ async function main() {
 
   // ── Process references ────────────────────────────────────────────────────
   // Re-fetch pages so any newly created ones are included for matching
-  const refreshedPages = await fetchAllPages();
+  const refreshedPages = existingPages;
 
   for (const row of refRows) {
     try {
