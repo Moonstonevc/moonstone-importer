@@ -89,6 +89,22 @@ function normName(s) {
     .trim();
 }
 
+function normUrl(s) {
+  return (s || "")
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/^www\./, "")
+    .replace(/\/+$/, "")
+    .trim();
+}
+
+function fuzzyMatch(a, b, threshold = 2) {
+  if (!a || !b) return false;
+  const na = normName(a), nb = normName(b);
+  if (na.length < 5 || nb.length < 5) return na === nb;
+  return distance(na, nb) <= threshold;
+}
+
 function getBestMatch(targetKey, candidates, threshold = 2) {
   if (targetKey.length < 5) return null;
   let best = null, bestScore = Infinity;
@@ -99,8 +115,39 @@ function getBestMatch(targetKey, candidates, threshold = 2) {
   return bestScore <= threshold ? best : null;
 }
 
+// ===================== SECTION: Reference Matching =====================
+// 2-of-3 signal system:
+//   1. Startup name fuzzy match  (col 7 vs page title)
+//   2. Founder email exact match (col 8 vs Founder Email property)
+//   3. Company website match     (col 9 vs Company Website property)
+function findReferenceMatch(refRow, existingPages) {
+  const refName    = (refRow[7] || "").trim();
+  const refEmail   = (refRow[8] || "").trim().toLowerCase();
+  const refWebsite = normUrl(refRow[9] || "");
+
+  let bestPage  = null;
+  let bestScore = 0;
+
+  for (const page of existingPages) {
+    const pageTitle   = page?.properties?.Name?.title?.[0]?.text?.content || "";
+    const pageEmail   = (page?.properties?.["Founder Email"]?.email || "").toLowerCase();
+    const pageWebsite = normUrl(page?.properties?.["Company Website"]?.url || "");
+
+    let signals = 0;
+    if (refName    && fuzzyMatch(refName, pageTitle))                         signals++;
+    if (refEmail   && pageEmail   && refEmail === pageEmail)                  signals++;
+    if (refWebsite && pageWebsite && normUrl(refWebsite) === pageWebsite)     signals++;
+
+    if (signals >= 2 && signals > bestScore) {
+      bestScore = signals;
+      bestPage  = page;
+    }
+  }
+
+  return bestPage;
+}
+
 // ===================== SECTION: Column Routing =====================
-// col[3] value → which Notion select property to set to "Form Inbound"
 const ENTITY_PROP_MAP = {
   "moonstone vc (cleantech, healthtech, deeptech)": "Moonstone Status",
   "urban venture vc (media-driven growth)":         "Urban Venture Status",
@@ -108,11 +155,8 @@ const ENTITY_PROP_MAP = {
   "moonstone searchfund":                           "Moonstone Searchfund",
 };
 
-// col indices that go into the "Form" toggle body (not properties)
-// We include ALL non-property cols 13–39 (skip blanks at runtime)
 const FORM_TOGGLE_INDICES = [13,14,15,16,17,18,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39];
 
-// Human-readable question labels (indexed by col)
 const QUESTION_LABELS = {
   13: "Why now?",
   14: "Tell us about your defensibility.",
@@ -142,7 +186,6 @@ const QUESTION_LABELS = {
   39: "Anything else?",
 };
 
-// Reference sheet question labels (by col)
 const REF_LABELS = {
   2:  "Submitted at",
   3:  "Referrer name",
@@ -206,7 +249,6 @@ async function dedupeToggles(parentId, titles) {
   }
 }
 
-// Ensure a named toggle exists under parentId; return its id
 async function ensureToggle(parentId, title) {
   const kids = await n.blocks.children.list({ block_id: parentId });
   const existing = kids.results.find(
@@ -237,16 +279,32 @@ async function fetchAllPages() {
   return pages;
 }
 
+function buildSubmissionIdSet(existingPages) {
+  const ids = new Set();
+  for (const page of existingPages) {
+    const sid = page?.properties?.["Submission ID"]?.rich_text?.[0]?.text?.content;
+    if (sid) ids.add(sid);
+  }
+  return ids;
+}
+
 // ===================== SECTION: Process Incoming Form Row =====================
-async function processIncomingRow(row, existingPages) {
-  const entity   = (row[3] || "").trim().toLowerCase();
+async function processIncomingRow(row, existingPages, processedIds) {
+  const submissionId = (row[0] || "").trim();
+
+  if (submissionId && processedIds.has(submissionId)) {
+    console.log(`⏭️  Skipping already-imported submission: ${submissionId}`);
+    return;
+  }
+
+  const entity = (row[3] || "").trim().toLowerCase();
   const statusProp = ENTITY_PROP_MAP[entity];
   if (!statusProp) {
     console.warn(`⚠️  Unknown entity value: "${row[3]}" — skipping row`);
     return;
   }
 
-  const pageTitle  = (row[7] || "").trim();  // About your organization = page title
+  const pageTitle = (row[7] || "").trim();
   if (!pageTitle) {
     console.warn("⚠️  Empty org name (col 7) — skipping row");
     return;
@@ -259,20 +317,20 @@ async function processIncomingRow(row, existingPages) {
     ? existingPages.find(p => normName(p?.properties?.Name?.title?.[0]?.text?.content || "") === matchedKey)
     : null;
 
-  // ── Build properties ──────────────────────────────────────────────────────
   const props = {
-    [statusProp]:        { select: { name: "Form Inbound" } },
-    "Last Updated":      { date: { start: new Date().toISOString() } },
+    [statusProp]:   { select: { name: "Form Inbound" } },
+    "Last Updated": { date: { start: new Date().toISOString() } },
   };
 
-  if (row[2])  props["Form filled out:"] = { date: { start: new Date(row[2]).toISOString() } };
-  if (row[4])  props["Founder Name"]     = { rich_text: [{ text: { content: row[4] } }] };
-  if (row[5])  props["Founder Email"]    = { email: row[5] };
-  if (row[6])  props["Founder LinkedIn"] = { url: row[6] };
-  if (row[8])  props["Company Website"]  = { url: row[8] };
-  if (row[9])  props["Country, City"]    = { select: { name: row[9].trim() } };
-  if (row[10]) props["Current raise in kEUR"] = { number: parseFloat(row[10]) || null };
-  if (row[11]) props["Value Proposition"] = { rich_text: [{ text: { content: row[11] } }] };
+  if (submissionId) props["Submission ID"]      = { rich_text: [{ text: { content: submissionId } }] };
+  if (row[2])  props["Form filled out:"]        = { date: { start: new Date(row[2]).toISOString() } };
+  if (row[4])  props["Founder Name"]            = { rich_text: [{ text: { content: row[4] } }] };
+  if (row[5])  props["Founder Email"]           = { email: row[5] };
+  if (row[6])  props["Founder LinkedIn"]        = { url: row[6] };
+  if (row[8])  props["Company Website"]         = { url: row[8] };
+  if (row[9])  props["Country, City"]           = { select: { name: row[9].trim() } };
+  if (row[10]) props["Current raise in kEUR"]   = { number: parseFloat(row[10]) || null };
+  if (row[11]) props["Value Proposition"]       = { rich_text: [{ text: { content: row[11] } }] };
   if (row[12]) props["Sector"] = {
     multi_select: row[12].split(",").map(s => ({ name: s.trim() })).filter(s => s.name),
   };
@@ -293,16 +351,22 @@ async function processIncomingRow(row, existingPages) {
         ...props,
       },
     });
-    // Register in local cache so later rows / refs can find it
-    existingPages.push({   id: parentPage.id,   properties: { Name: { title: [{ text: { content: pageTitle } }] } } });
+    existingPages.push({
+      id: parentPage.id,
+      properties: {
+        Name:              { title: [{ text: { content: pageTitle } }] },
+        "Submission ID":   { rich_text: [{ text: { content: submissionId } }] },
+        "Founder Email":   { email: row[5] || null },
+        "Company Website": { url: row[8] || null },
+      },
+    });
   }
 
-  // ── Ensure "Form" toggle exists ───────────────────────────────────────────
+  if (submissionId) processedIds.add(submissionId);
+
   await dedupeToggles(parentPage.id, ["Form"]);
   const formId = await ensureToggle(parentPage.id, "Form");
 
-  // ── Append non-property Q&A into Form toggle ──────────────────────────────
-  // Only append indices that have a non-empty answer and don't already exist
   const formKids = await n.blocks.children.list({ block_id: formId });
   const existingTitles = new Set(
     formKids.results
@@ -315,12 +379,11 @@ async function processIncomingRow(row, existingPages) {
     const answer = row[idx]?.trim?.();
     if (!answer) continue;
     const label = QUESTION_LABELS[idx] || `Question ${idx}`;
-    if (existingTitles.has(label)) continue;  // already written on a previous run
+    if (existingTitles.has(label)) continue;
     toAppend.push(quoteToggle(label, answer));
   }
 
   if (toAppend.length) {
-    // Notion allows max 100 children per append call
     for (let i = 0; i < toAppend.length; i += 50) {
       await appendSafe(formId, toAppend.slice(i, i + 50));
       await sleep(100);
@@ -332,54 +395,51 @@ async function processIncomingRow(row, existingPages) {
 }
 
 // ===================== SECTION: Process Reference Row =====================
-async function processReferenceRow(refRow, existingPages) {
-  const startupName = (refRow[7] || "").trim();
-  const startupKey  = normName(startupName);
+async function processReferenceRow(refRow, existingPages, processedRefIds) {
+  const submissionId = (refRow[0] || "").trim();
 
-  const candidates  = existingPages.map(p => normName(p?.properties?.Name?.title?.[0]?.text?.content || ""));
-  const matchedKey  = startupKey ? getBestMatch(startupKey, candidates) : null;
-  const matchedPage = matchedKey
-    ? existingPages.find(p => normName(p?.properties?.Name?.title?.[0]?.text?.content || "") === matchedKey)
-    : null;
+  if (submissionId && processedRefIds.has(submissionId)) {
+    console.log(`⏭️  Skipping already-imported reference: ${submissionId}`);
+    return;
+  }
+
+  const startupName    = (refRow[7] || "").trim();
+  const refToggleTitle = submissionId ? `Referral · ${submissionId}` : `Referral · ${Date.now()}`;
+  const matchedPage    = findReferenceMatch(refRow, existingPages);
 
   if (matchedPage) {
-    // ── MATCHED: add Referral Insight to existing page ────────────────────
-    console.log(`🔗 Matched reference "${startupName}" → existing page`);
+    const matchedTitle = matchedPage?.properties?.Name?.title?.[0]?.text?.content || "";
+    console.log(`🔗 Matched reference "${startupName}" → "${matchedTitle}"`);
+
     await dedupeToggles(matchedPage.id, ["Referral Insight"]);
     const riId = await ensureToggle(matchedPage.id, "Referral Insight");
 
-    // Count existing referral sub-toggles to determine next number
     const riKids = await n.blocks.children.list({ block_id: riId });
-    const existingNums = riKids.results
-      .filter(b => b.type === "toggle")
-      .map(b => {
-        const m = (b.toggle?.rich_text?.[0]?.text?.content || "").match(/^Referral (\d+)$/);
-        return m ? parseInt(m[1]) : 0;
-      });
-    const nextNum   = existingNums.length ? Math.max(...existingNums) + 1 : 1;
-    const refTitle  = `Referral ${nextNum}`;
+    const alreadyExists = riKids.results.some(
+      b => b.type === "toggle" && b.toggle?.rich_text?.[0]?.text?.content === refToggleTitle
+    );
+    if (alreadyExists) {
+      console.log(`⏭️  Reference toggle already exists for ${submissionId} — skipping`);
+      if (submissionId) processedRefIds.add(submissionId);
+      return;
+    }
 
-    // Create the "Referral N" toggle (empty first)
     const refRes = await n.blocks.children.append({
       block_id: riId,
       children: [{ object: "block", type: "toggle",
-        toggle: { rich_text: [{ type: "text", text: { content: refTitle } }] } }],
+        toggle: { rich_text: [{ type: "text", text: { content: refToggleTitle } }] } }],
     });
     await sleep(120);
     const refId = refRes.results[0].id;
 
-    // Append info table + Q&A toggles
     const pairs = Object.entries(REF_LABELS).map(([idx, label]) => [label, refRow[idx] || ""]);
     await appendSafe(refId, [tableBlock(pairs)]);
     await sleep(100);
 
   } else {
-    // ── UNMATCHED: create a standalone [REFERENCE] page ───────────────────
     console.log(`⚠️  Unmatched reference: "${startupName}" — creating standalone page`);
 
     const pageTitle = `[REFERENCE] ${startupName || "Unknown Startup"}`;
-
-    // Check if we already have an unmatched page for this startup
     const existingUnmatched = existingPages.find(
       p => p?.properties?.Name?.title?.[0]?.text?.content === pageTitle
     );
@@ -388,9 +448,10 @@ async function processReferenceRow(refRow, existingPages) {
       "Moonstone Status": { select: { name: "Form Referral" } },
       "Last Updated":     { date: { start: new Date().toISOString() } },
     };
-    if (refRow[6]) refProps["Founder Name"]    = { rich_text: [{ text: { content: refRow[6] } }] };
-    if (refRow[8]) refProps["Founder Email"]   = { email: refRow[8] };
-    if (refRow[9]) refProps["Company Website"] = { url: refRow[9] };
+    if (submissionId) refProps["Submission ID"]  = { rich_text: [{ text: { content: submissionId } }] };
+    if (refRow[6])  refProps["Founder Name"]     = { rich_text: [{ text: { content: refRow[6] } }] };
+    if (refRow[8])  refProps["Founder Email"]    = { email: refRow[8] };
+    if (refRow[9])  refProps["Company Website"]  = { url: refRow[9] };
     if (refRow[10]) refProps["Sector"] = {
       multi_select: refRow[10].split(",").map(s => ({ name: s.trim() })).filter(s => s.name),
     };
@@ -408,39 +469,42 @@ async function processReferenceRow(refRow, existingPages) {
         },
       });
       existingPages.push({
-  id: page.id,
-  properties: { Name: { title: [{ text: { content: pageTitle } }] } }
-});
+        id: page.id,
+        properties: {
+          Name:              { title: [{ text: { content: pageTitle } }] },
+          "Submission ID":   { rich_text: [{ text: { content: submissionId } }] },
+          "Founder Email":   { email: refRow[8] || null },
+          "Company Website": { url: refRow[9] || null },
+        },
+      });
     }
 
-    // Ensure Referral Insight toggle
     await dedupeToggles(page.id, ["Referral Insight"]);
     const riId = await ensureToggle(page.id, "Referral Insight");
 
-    const riKids   = await n.blocks.children.list({ block_id: riId });
-    const existingNums = riKids.results
-      .filter(b => b.type === "toggle")
-      .map(b => {
-        const m = (b.toggle?.rich_text?.[0]?.text?.content || "").match(/^Referral (\d+)$/);
-        return m ? parseInt(m[1]) : 0;
+    const riKids = await n.blocks.children.list({ block_id: riId });
+    const alreadyExists = riKids.results.some(
+      b => b.type === "toggle" && b.toggle?.rich_text?.[0]?.text?.content === refToggleTitle
+    );
+
+    if (!alreadyExists) {
+      const refRes = await n.blocks.children.append({
+        block_id: riId,
+        children: [{ object: "block", type: "toggle",
+          toggle: { rich_text: [{ type: "text", text: { content: refToggleTitle } }] } }],
       });
-    const nextNum  = existingNums.length ? Math.max(...existingNums) + 1 : 1;
-    const refTitle = `Referral ${nextNum}`;
+      await sleep(120);
+      const refId = refRes.results[0].id;
 
-    const refRes = await n.blocks.children.append({
-      block_id: riId,
-      children: [{ object: "block", type: "toggle",
-        toggle: { rich_text: [{ type: "text", text: { content: refTitle } }] } }],
-    });
-    await sleep(120);
-    const refId = refRes.results[0].id;
+      const pairs = Object.entries(REF_LABELS).map(([idx, label]) => [label, refRow[idx] || ""]);
+      await appendSafe(refId, [tableBlock(pairs)]);
+      await sleep(100);
+    }
 
-    const pairs = Object.entries(REF_LABELS).map(([idx, label]) => [label, refRow[idx] || ""]);
-    await appendSafe(refId, [tableBlock(pairs)]);
-    await sleep(100);
-
-    console.log(`✅ Unmatched reference page created: ${pageTitle}`);
+    console.log(`✅ Unmatched reference page ready: ${pageTitle}`);
   }
+
+  if (submissionId) processedRefIds.add(submissionId);
 }
 
 // ===================== SECTION: Fetch Sheet =====================
@@ -456,33 +520,30 @@ async function fetchSheet(spreadsheetId, range = "A2:AZ") {
 async function main() {
   console.log("🚀 Moonstone Importer started");
 
-  // Load both sheets in parallel
   const [incomingRows, refRows] = await Promise.all([
     fetchSheet(process.env.GOOGLE_SHEET_ID_INCOMING),
     fetchSheet(process.env.GOOGLE_SHEET_ID_REFS),
   ]);
   console.log(`📄 Incoming rows: ${incomingRows.length} | Reference rows: ${refRows.length}`);
 
-  // Load all existing Notion pages once
   const existingPages = await fetchAllPages();
   console.log(`📚 Existing Notion pages loaded: ${existingPages.length}`);
 
-  // ── Process incoming forms first ─────────────────────────────────────────
+  const processedIds    = buildSubmissionIdSet(existingPages);
+  const processedRefIds = new Set(processedIds);
+  console.log(`🔑 Known submission IDs: ${processedIds.size}`);
+
   for (const row of incomingRows) {
     try {
-      await processIncomingRow(row, existingPages);
+      await processIncomingRow(row, existingPages, processedIds);
     } catch (err) {
       console.error(`⚠️  Error processing incoming row (org: "${row[7]}"): `, err?.message || err);
     }
   }
 
-  // ── Process references ────────────────────────────────────────────────────
-  // Re-fetch pages so any newly created ones are included for matching
-  const refreshedPages = existingPages;
-
   for (const row of refRows) {
     try {
-      await processReferenceRow(row, refreshedPages);
+      await processReferenceRow(row, existingPages, processedRefIds);
     } catch (err) {
       console.error(`⚠️  Error processing reference row (startup: "${row[7]}"): `, err?.message || err);
     }
