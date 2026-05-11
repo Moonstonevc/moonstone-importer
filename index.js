@@ -155,35 +155,35 @@ const ENTITY_PROP_MAP = {
   "moonstone search fund":                           "Moonstone Searchfund",
 };
 
-const FORM_TOGGLE_INDICES = [13,14,15,16,17,18,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39];
+const FORM_TOGGLE_INDICES = [14,15,16,17,18,19,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40];
 
 const QUESTION_LABELS = {
-  13: "Why now?",
-  14: "Tell us about your defensibility.",
-  15: "Which pillar of the Human Sovereignty thesis does your startup address?",
-  16: "What evidential basis supports your core intervention?",
-  17: "How central is media spend to your growth strategy? What would you do with more media firepower?",
-  18: "Which sector, geography, size range and business model are you targeting?",
-  20: "What is the target EBITDA range?",
-  21: "What is your target EV range?",
-  22: "Tell us about your deal sourcing approach.",
-  23: "Tell us about your relevant M&A and operational experience.",
-  24: "What is your current ARR?",
-  25: "What earlier investment did you receive, if any?",
-  26: "Which funds or angels have you had in-depth conversations with?",
-  27: "How is your upcoming round structured?",
-  28: "What is your pre-money valuation?",
-  29: "What is your post-money valuation?",
-  30: "What is your valuation cap?",
-  31: "What is your discount rate?",
-  32: "What is your floor?",
-  33: "What is your interest rate?",
-  34: "What is your use of funds?",
-  35: "Why are you the right person for this?",
-  36: "What is your organisation's full-time headcount?",
-  37: "What is your organisation's team composition?",
-  38: "Did someone suggest you apply to Moonstone? How did you find us?",
-  39: "Anything else?",
+  14: "Why now?",
+  15: "Tell us about your defensibility.",
+  16: "Which pillar of the Human Sovereignty thesis does your startup address?",
+  17: "What evidential basis supports your core intervention?",
+  18: "How central is media spend to your growth strategy? What would you do with more media firepower?",
+  19: "Which sector, geography, size range and business model are you targeting?",
+  21: "What is the target EBITDA range?",
+  22: "What is your target EV range?",
+  23: "Tell us about your deal sourcing approach.",
+  24: "Tell us about your relevant M&A and operational experience.",
+  25: "What is your current ARR?",
+  26: "What earlier investment did you receive, if any?",
+  27: "Which funds or angels have you had in-depth conversations with?",
+  28: "How is your upcoming round structured?",
+  29: "What is your pre-money valuation?",
+  30: "What is your post-money valuation?",
+  31: "What is your valuation cap?",
+  32: "What is your discount rate?",
+  33: "What is your floor?",
+  34: "What is your interest rate?",
+  35: "What is your use of funds?",
+  36: "Why are you the right person for this?",
+  37: "What is your organisation's full-time headcount?",
+  38: "What is your organisation's team composition?",
+  39: "Did someone suggest you apply to Moonstone? How did you find us?",
+  40: "Anything else?",
 };
 
 const REF_LABELS = {
@@ -330,11 +330,12 @@ async function processIncomingRow(row, existingPages, processedIds) {
   if (row[8])  props["Company Website"]         = { url: row[8] };
   if (row[9])  props["Country, City"]           = { select: { name: row[9].trim() } };
   if (row[10]) props["Current raise in kEUR"]   = { number: parseFloat(row[10]) || null };
-  if (row[11]) props["Value Proposition"]       = { rich_text: [{ text: { content: row[11] } }] };
-  if (row[12]) props["Sector"] = {
-    multi_select: row[12].split(",").map(s => ({ name: s.trim() })).filter(s => s.name),
-  };
-  if (row[19]) props["SF Status"] = { select: { name: row[19].trim() } };
+  if (row[12]) props["Value Proposition"] = { rich_text: [{ text: { content: row[12] } }] };
+if (row[13]) props["Sector"] = {
+  multi_select: row[13].split(",").map(s => ({ name: s.trim() })).filter(s => s.name),
+};
+if (row[20]) props["SF Status"] = { select: { name: row[20].trim() } };
+
 
   let parentPage;
 
