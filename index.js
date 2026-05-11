@@ -316,10 +316,10 @@ async function processIncomingRow(row, existingPages, processedIds) {
   if (row[6])  props["Founder LinkedIn"]      = { url: row[6] };
   if (row[8])  props["Company Website"]       = { url: row[8] };
   // col 9: Country, City — stored as rich_text to avoid Notion's no-comma select restriction
-  if (row[9])  props["Country, City"]         = { rich_text: [{ text: { content: row[9].trim() } }] };
+  if (row[9])  props["Country, City"]         = { select: { name: row[9].trim().replace(/,/g, " —") } };
   if (row[10]) props["Current raise in kEUR"] = { number: parseFloat(row[10]) || null };
   // col 11: deck/ppt URL
-  if (row[11]) props["Deck"]                  = { url: row[11] };
+  if (row[11]) props["Deck"] = { files: [{ name: "Deck", type: "external", external: { url: row[11] } }] };
   // col 12: one-sentence value proposition
   if (row[12]) props["Value Proposition"]     = { rich_text: [{ text: { content: row[12] } }] };
   // col 13: market/sector (comma-separated)
