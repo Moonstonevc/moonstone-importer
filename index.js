@@ -105,17 +105,8 @@ function fuzzyMatch(a, b, threshold = 2) {
   return distance(na, nb) <= threshold;
 }
 
-function getBestMatch(targetKey, candidates, threshold = 2) {
-  if (targetKey.length < 5) return null;
-  let best = null, bestScore = Infinity;
-  for (const c of candidates) {
-    const score = distance(targetKey, c);
-    if (score < bestScore) { bestScore = score; best = c; }
-  }
-  return bestScore <= threshold ? best : null;
-}
-
 // ===================== SECTION: Reference Matching =====================
+// Used ONLY for reference rows — never for incoming founder submissions.
 // 2-of-3 signal system:
 //   1. Startup name fuzzy match  (col 7 vs page title)
 //   2. Founder email exact match (col 8 vs Founder Email property)
@@ -134,9 +125,9 @@ function findReferenceMatch(refRow, existingPages) {
     const pageWebsite = normUrl(page?.properties?.["Company Website"]?.url || "");
 
     let signals = 0;
-    if (refName    && fuzzyMatch(refName, pageTitle))                         signals++;
-    if (refEmail   && pageEmail   && refEmail === pageEmail)                  signals++;
-    if (refWebsite && pageWebsite && normUrl(refWebsite) === pageWebsite)     signals++;
+    if (refName    && fuzzyMatch(refName, pageTitle))                     signals++;
+    if (refEmail   && pageEmail   && refEmail === pageEmail)              signals++;
+    if (refWebsite && pageWebsite && normUrl(refWebsite) === pageWebsite) signals++;
 
     if (signals >= 2 && signals > bestScore) {
       bestScore = signals;
@@ -151,8 +142,8 @@ function findReferenceMatch(refRow, existingPages) {
 const ENTITY_PROP_MAP = {
   "moonstone vc (cleantech, healthtech, deeptech)": "Moonstone Status",
   "urban venture vc (media-driven growth)":         "Urban Venture Status",
-  "moonstone vc (human sovereignty)":         "HSF",
-  "moonstone search fund":                           "Moonstone Searchfund",
+  "moonstone vc (human sovereignty)":               "HSF",
+  "moonstone search fund":                          "Moonstone Searchfund",
 };
 
 const FORM_TOGGLE_INDICES = [14,15,16,17,18,19,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40];
@@ -289,6 +280,9 @@ function buildSubmissionIdSet(existingPages) {
 }
 
 // ===================== SECTION: Process Incoming Form Row =====================
+// For incoming founder submissions we NEVER fuzzy-match against existing pages.
+// Logic: if Submission ID already exists → skip. Otherwise always create a new page.
+// This prevents false matches like Chiara→Chirp or Movix→Monia.
 async function processIncomingRow(row, existingPages, processedIds) {
   const submissionId = (row[0] || "").trim();
 
@@ -310,58 +304,49 @@ async function processIncomingRow(row, existingPages, processedIds) {
     return;
   }
 
-  const titleKey   = normName(pageTitle);
-  const candidates = existingPages.map(p => normName(p?.properties?.Name?.title?.[0]?.text?.content || ""));
-  const matchedKey = getBestMatch(titleKey, candidates);
-  const existing   = matchedKey
-    ? existingPages.find(p => normName(p?.properties?.Name?.title?.[0]?.text?.content || "") === matchedKey)
-    : null;
-
   const props = {
     [statusProp]:   { select: { name: "Form Inbound" } },
     "Last Updated": { date: { start: new Date().toISOString() } },
   };
 
-  if (submissionId) props["Submission ID"]      = { rich_text: [{ text: { content: submissionId } }] };
-  if (row[2])  props["Form filled out:"]        = { date: { start: new Date(row[2]).toISOString() } };
-  if (row[4])  props["Founder Name"]            = { rich_text: [{ text: { content: row[4] } }] };
-  if (row[5])  props["Founder Email"]           = { email: row[5] };
-  if (row[6])  props["Founder LinkedIn"]        = { url: row[6] };
-  if (row[8])  props["Company Website"]         = { url: row[8] };
-  if (row[9])  props["Country, City"]           = { select: { name: row[9].trim() } };
-  if (row[10]) props["Current raise in kEUR"]   = { number: parseFloat(row[10]) || null };
-  if (row[12]) props["Value Proposition"] = { rich_text: [{ text: { content: row[12] } }] };
-if (row[13]) props["Sector"] = {
-  multi_select: row[13].split(",").map(s => ({ name: s.trim() })).filter(s => s.name),
-};
-if (row[20]) props["SF Status"] = { select: { name: row[20].trim() } };
+  if (submissionId) props["Submission ID"]    = { rich_text: [{ text: { content: submissionId } }] };
+  if (row[2])  props["Form filled out:"]      = { date: { start: new Date(row[2]).toISOString() } };
+  if (row[4])  props["Founder Name"]          = { rich_text: [{ text: { content: row[4] } }] };
+  if (row[5])  props["Founder Email"]         = { email: row[5] };
+  if (row[6])  props["Founder LinkedIn"]      = { url: row[6] };
+  if (row[8])  props["Company Website"]       = { url: row[8] };
+  // col 9: Country, City — stored as rich_text to avoid Notion's no-comma select restriction
+  if (row[9])  props["Country, City"]         = { rich_text: [{ text: { content: row[9].trim() } }] };
+  if (row[10]) props["Current raise in kEUR"] = { number: parseFloat(row[10]) || null };
+  // col 11: deck/ppt URL
+  if (row[11]) props["Deck"]                  = { url: row[11] };
+  // col 12: one-sentence value proposition
+  if (row[12]) props["Value Proposition"]     = { rich_text: [{ text: { content: row[12] } }] };
+  // col 13: market/sector (comma-separated)
+  if (row[13]) props["Sector"] = {
+    multi_select: row[13].split(",").map(s => ({ name: s.trim() })).filter(s => s.name),
+  };
+  // col 20: search fund status
+  if (row[20]) props["SF Status"]             = { select: { name: row[20].trim() } };
 
+  console.log(`🛠  Creating new page: ${pageTitle}`);
+  const parentPage = await n.pages.create({
+    parent: { type: "database_id", database_id: process.env.NOTION_DATABASE_ID },
+    properties: {
+      Name: { title: [{ text: { content: pageTitle } }] },
+      ...props,
+    },
+  });
 
-  let parentPage;
-
-  if (existing) {
-    console.log(`🔁 Updating existing page: ${pageTitle}`);
-    parentPage = existing;
-    await n.pages.update({ page_id: existing.id, properties: props });
-  } else {
-    console.log(`🛠  Creating new page: ${pageTitle}`);
-    parentPage = await n.pages.create({
-      parent: { type: "database_id", database_id: process.env.NOTION_DATABASE_ID },
-      properties: {
-        Name: { title: [{ text: { content: pageTitle } }] },
-        ...props,
-      },
-    });
-    existingPages.push({
-      id: parentPage.id,
-      properties: {
-        Name:              { title: [{ text: { content: pageTitle } }] },
-        "Submission ID":   { rich_text: [{ text: { content: submissionId } }] },
-        "Founder Email":   { email: row[5] || null },
-        "Company Website": { url: row[8] || null },
-      },
-    });
-  }
+  existingPages.push({
+    id: parentPage.id,
+    properties: {
+      Name:              { title: [{ text: { content: pageTitle } }] },
+      "Submission ID":   { rich_text: [{ text: { content: submissionId } }] },
+      "Founder Email":   { email: row[5] || null },
+      "Company Website": { url: row[8] || null },
+    },
+  });
 
   if (submissionId) processedIds.add(submissionId);
 
